@@ -1,6 +1,6 @@
 //! Vim-style input handling.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Mode};
 
@@ -17,6 +17,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent, page_size: usize) {
         Mode::Insert => handle_insert_mode(app, key),
         Mode::Command => handle_command_mode(app, key),
         Mode::Search => handle_search_mode(app, key),
+        Mode::Browse => handle_browse_mode(app, key),
     }
 }
 
@@ -328,5 +329,35 @@ fn handle_search_mode(app: &mut App, key: KeyEvent) {
             app.search_pattern.push(c);
         }
         _ => {}
+    }
+}
+
+/// Handle keys in file browser mode.
+fn handle_browse_mode(app: &mut App, key: KeyEvent) {
+    // Handle Escape to exit browser
+    if key.code == KeyCode::Esc {
+        app.exit_browse_mode();
+        return;
+    }
+
+    // Handle Enter to select file
+    if key.code == KeyCode::Enter {
+        if let Some(ref explorer) = app.file_explorer {
+            let current = explorer.current();
+            if current.is_file() {
+                let path = current.path().to_path_buf();
+                app.exit_browse_mode();
+                if let Err(e) = app.load_file(&path) {
+                    app.set_status(e);
+                }
+                return;
+            }
+        }
+    }
+
+    // Pass other events to the file explorer
+    if let Some(ref mut explorer) = app.file_explorer {
+        let event = Event::Key(key);
+        let _ = explorer.handle(&event);
     }
 }

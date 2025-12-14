@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use ratatui_explorer::FileExplorer;
+
 use crate::editor::History;
 use crate::stockholm::Alignment;
 use crate::structure::StructureCache;
@@ -14,6 +16,8 @@ pub enum Mode {
     Insert,
     Command,
     Search,
+    /// File browser mode for opening files.
+    Browse,
 }
 
 impl Mode {
@@ -23,6 +27,7 @@ impl Mode {
             Mode::Insert => "INSERT",
             Mode::Command => "COMMAND",
             Mode::Search => "SEARCH",
+            Mode::Browse => "BROWSE",
         }
     }
 }
@@ -155,6 +160,10 @@ pub struct App {
     pub(crate) search_matches: Vec<(usize, usize, usize)>,
     /// Current match index in search_matches.
     pub(crate) search_match_index: Option<usize>,
+
+    // === File browser state ===
+    /// File explorer for browsing files.
+    pub(crate) file_explorer: Option<FileExplorer>,
 }
 
 impl Default for App {
@@ -191,6 +200,7 @@ impl Default for App {
             search_pattern: String::new(),
             search_matches: Vec::new(),
             search_match_index: None,
+            file_explorer: None,
         }
     }
 }
@@ -471,6 +481,25 @@ impl App {
         self.search_pattern.clear();
     }
 
+    /// Enter file browser mode.
+    pub fn enter_browse_mode(&mut self) {
+        match FileExplorer::new() {
+            Ok(explorer) => {
+                self.file_explorer = Some(explorer);
+                self.mode = Mode::Browse;
+            }
+            Err(e) => {
+                self.set_status(format!("Failed to open file browser: {e}"));
+            }
+        }
+    }
+
+    /// Exit file browser mode without selecting a file.
+    pub fn exit_browse_mode(&mut self) {
+        self.file_explorer = None;
+        self.mode = Mode::Normal;
+    }
+
     /// Clear search highlighting.
     pub fn clear_search(&mut self) {
         self.search_pattern.clear();
@@ -706,6 +735,16 @@ impl App {
                     self.set_status(e);
                 } else {
                     self.should_quit = true;
+                }
+            }
+            ["e" | "edit"] => {
+                // Open file browser
+                self.enter_browse_mode();
+            }
+            ["e" | "edit", path] => {
+                // Open specific file
+                if let Err(e) = self.load_file(Path::new(path)) {
+                    self.set_status(e);
                 }
             }
             ["color", scheme] => {

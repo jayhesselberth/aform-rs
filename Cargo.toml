@@ -10,7 +10,7 @@ categories = ["command-line-utilities", "science"]
 
 [dependencies]
 ratatui = "0.29"
-crossterm = "0.29"
+ratatui-explorer = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"

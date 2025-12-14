@@ -23,6 +23,14 @@ pub fn render(frame: &mut Frame, app: &App) {
         ])
         .split(frame.area());
 
+    // If in browse mode, render file explorer
+    if app.mode == Mode::Browse {
+        render_file_explorer(frame, app, chunks[0]);
+        render_status_bar(frame, app, chunks[1]);
+        render_command_line(frame, app, chunks[2]);
+        return;
+    }
+
     // Handle split mode
     match app.split_mode {
         None => {
@@ -396,6 +404,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Mode::Insert => Style::default().bg(Color::Green).fg(Color::Black),
         Mode::Command => Style::default().bg(Color::Yellow).fg(Color::Black),
         Mode::Search => Style::default().bg(Color::Magenta).fg(Color::White),
+        Mode::Browse => Style::default().bg(Color::Cyan).fg(Color::Black),
     };
 
     let mode_span = Span::styled(format!(" {} ", app.mode.as_str()), mode_style);
@@ -512,6 +521,20 @@ pub fn visible_dimensions(
     let inner_width = (pane_width as usize).saturating_sub(id_formatter.width() + 2);
 
     (inner_height, inner_width)
+}
+
+/// Render file explorer for browse mode.
+fn render_file_explorer(frame: &mut Frame, app: &App, area: Rect) {
+    if let Some(ref explorer) = app.file_explorer {
+        let block = Block::default()
+            .title(" Open File (Enter=select, Esc=cancel) ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan));
+
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        frame.render_widget(&explorer.widget(), inner);
+    }
 }
 
 /// Render help overlay.
