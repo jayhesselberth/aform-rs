@@ -188,8 +188,9 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             app.set_status("d...");
         }
 
-        // Help
-        (KeyModifiers::SHIFT, KeyCode::Char('?')) => {
+        // Help (some terminals send ? without SHIFT modifier)
+        (KeyModifiers::SHIFT, KeyCode::Char('?'))
+        | (KeyModifiers::NONE, KeyCode::Char('?')) => {
             app.toggle_help();
         }
 
