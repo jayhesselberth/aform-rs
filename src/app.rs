@@ -86,6 +86,12 @@ pub struct App {
     pub mode: Mode,
     /// Command line buffer (for command mode).
     pub command_buffer: String,
+    /// Command history.
+    pub command_history: Vec<String>,
+    /// Current position in command history (None = new command).
+    pub command_history_index: Option<usize>,
+    /// Saved command buffer when browsing history.
+    pub command_history_saved: String,
     /// Status message.
     pub status_message: Option<String>,
 
@@ -106,6 +112,15 @@ pub struct App {
     /// Should quit.
     pub should_quit: bool,
 
+    /// Show help overlay.
+    pub show_help: bool,
+
+    /// Show position ruler at top.
+    pub show_ruler: bool,
+
+    /// Show row numbers.
+    pub show_row_numbers: bool,
+
     /// Reference sequence index for compensatory coloring.
     pub reference_seq: usize,
 }
@@ -122,6 +137,9 @@ impl Default for App {
             viewport_col: 0,
             mode: Mode::Normal,
             command_buffer: String::new(),
+            command_history: Vec::new(),
+            command_history_index: None,
+            command_history_saved: String::new(),
             status_message: None,
             gap_char: '.',
             gap_chars: vec!['.', '-', '_', '~', ':'],
@@ -129,6 +147,9 @@ impl Default for App {
             structure_cache: StructureCache::new(),
             history: History::new(),
             should_quit: false,
+            show_help: false,
+            show_ruler: true,
+            show_row_numbers: true,
             reference_seq: 0,
         }
     }
@@ -301,6 +322,8 @@ impl App {
     pub fn enter_command_mode(&mut self) {
         self.mode = Mode::Command;
         self.command_buffer.clear();
+        self.command_history_index = None;
+        self.command_history_saved.clear();
     }
 
     /// Return to normal mode.
@@ -313,10 +336,16 @@ impl App {
     pub fn execute_command(&mut self) {
         let command = self.command_buffer.trim().to_string();
         self.command_buffer.clear();
+        self.command_history_index = None;
         self.mode = Mode::Normal;
 
         if command.is_empty() {
             return;
+        }
+
+        // Add to history (avoid consecutive duplicates)
+        if self.command_history.last() != Some(&command) {
+            self.command_history.push(command.clone());
         }
 
         let parts: Vec<&str> = command.split_whitespace().collect();
@@ -377,8 +406,69 @@ impl App {
             ["alifold"] => {
                 self.fold_alignment();
             }
+            ["?"] | ["help"] => {
+                self.show_help = true;
+            }
+            ["ruler"] => {
+                self.show_ruler = !self.show_ruler;
+                self.set_status(format!("Ruler: {}", if self.show_ruler { "on" } else { "off" }));
+            }
+            ["rownum"] => {
+                self.show_row_numbers = !self.show_row_numbers;
+                self.set_status(format!("Row numbers: {}", if self.show_row_numbers { "on" } else { "off" }));
+            }
             _ => {
                 self.set_status(format!("Unknown command: {}", command));
+            }
+        }
+    }
+
+    /// Toggle help display.
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
+    /// Navigate to previous command in history (Up arrow).
+    pub fn command_history_prev(&mut self) {
+        if self.command_history.is_empty() {
+            return;
+        }
+
+        match self.command_history_index {
+            None => {
+                // Save current input and go to most recent history
+                self.command_history_saved = self.command_buffer.clone();
+                self.command_history_index = Some(self.command_history.len() - 1);
+            }
+            Some(0) => {
+                // Already at oldest, stay there
+                return;
+            }
+            Some(i) => {
+                self.command_history_index = Some(i - 1);
+            }
+        }
+
+        if let Some(i) = self.command_history_index {
+            self.command_buffer = self.command_history[i].clone();
+        }
+    }
+
+    /// Navigate to next command in history (Down arrow).
+    pub fn command_history_next(&mut self) {
+        match self.command_history_index {
+            None => {
+                // Not in history, do nothing
+                return;
+            }
+            Some(i) if i >= self.command_history.len() - 1 => {
+                // At end of history, restore saved input
+                self.command_history_index = None;
+                self.command_buffer = self.command_history_saved.clone();
+            }
+            Some(i) => {
+                self.command_history_index = Some(i + 1);
+                self.command_buffer = self.command_history[i + 1].clone();
             }
         }
     }

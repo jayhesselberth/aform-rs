@@ -72,7 +72,7 @@ pub fn get_color(
     match scheme {
         ColorScheme::None => None,
         ColorScheme::Structure => get_structure_color(col, cache),
-        ColorScheme::Base => get_base_color(ch),
+        ColorScheme::Base => get_base_color(ch, gap_chars),
         ColorScheme::Conservation => get_conservation_color(col, alignment, gap_chars),
         ColorScheme::Compensatory => {
             get_compensatory_color(col, row, alignment, cache, gap_chars, reference_seq)
@@ -87,8 +87,15 @@ fn get_structure_color(col: usize, cache: &StructureCache) -> Option<Color> {
         .map(|helix_id| HELIX_COLORS[helix_id % HELIX_COLORS.len()])
 }
 
+/// Background color for gap characters in base coloring mode.
+const BASE_GAP_COLOR: Color = Color::Rgb(40, 40, 40); // dark gray
+
 /// Get color based on base identity.
-fn get_base_color(ch: char) -> Option<Color> {
+fn get_base_color(ch: char, gap_chars: &[char]) -> Option<Color> {
+    // Check if gap character - use dark gray background
+    if gap_chars.contains(&ch) {
+        return Some(BASE_GAP_COLOR);
+    }
     // Check RNA bases
     for (base, color) in BASE_COLORS {
         if ch == base {
@@ -101,7 +108,7 @@ fn get_base_color(ch: char) -> Option<Color> {
             return Some(color);
         }
     }
-    None
+    Some(BASE_GAP_COLOR) // Unknown chars also get explicit background
 }
 
 /// Get color based on conservation at a column.
@@ -208,11 +215,13 @@ mod tests {
 
     #[test]
     fn test_base_colors() {
-        assert!(get_base_color('A').is_some());
-        assert!(get_base_color('C').is_some());
-        assert!(get_base_color('G').is_some());
-        assert!(get_base_color('U').is_some());
-        assert!(get_base_color('.').is_none());
+        let gap_chars = ['.', '-'];
+        assert!(get_base_color('A', &gap_chars).is_some());
+        assert!(get_base_color('C', &gap_chars).is_some());
+        assert!(get_base_color('G', &gap_chars).is_some());
+        assert!(get_base_color('U', &gap_chars).is_some());
+        // Gaps return dark gray background
+        assert_eq!(get_base_color('.', &gap_chars), Some(Color::Rgb(40, 40, 40)));
     }
 
     #[test]

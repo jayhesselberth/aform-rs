@@ -92,8 +92,13 @@ fn run_app(
         // Calculate visible dimensions for viewport adjustment
         let size = terminal.size()?;
         let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-        let (visible_rows, visible_cols) =
-            ui::visible_dimensions(area, app.alignment.max_id_len());
+        let (visible_rows, visible_cols) = ui::visible_dimensions(
+            area,
+            app.alignment.num_sequences(),
+            app.alignment.max_id_len(),
+            app.show_ruler,
+            app.show_row_numbers,
+        );
 
         // Adjust viewport to keep cursor visible
         app.adjust_viewport(visible_rows, visible_cols);

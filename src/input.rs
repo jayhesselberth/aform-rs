@@ -6,6 +6,12 @@ use crate::app::{App, Mode};
 
 /// Handle a key event.
 pub fn handle_key(app: &mut App, key: KeyEvent, page_size: usize) {
+    // Close help overlay on any keypress
+    if app.show_help {
+        app.show_help = false;
+        return;
+    }
+
     match app.mode {
         Mode::Normal => handle_normal_mode(app, key, page_size),
         Mode::Insert => handle_insert_mode(app, key),
@@ -152,7 +158,7 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
 
         // Help
         (KeyModifiers::SHIFT, KeyCode::Char('?')) => {
-            show_help(app);
+            app.toggle_help();
         }
 
         _ => {}
@@ -225,6 +231,12 @@ fn handle_command_mode(app: &mut App, key: KeyEvent) {
                 app.enter_normal_mode();
             }
         }
+        KeyCode::Up => {
+            app.command_history_prev();
+        }
+        KeyCode::Down => {
+            app.command_history_next();
+        }
         KeyCode::Char(c) => {
             app.command_buffer.push(c);
         }
@@ -232,9 +244,3 @@ fn handle_command_mode(app: &mut App, key: KeyEvent) {
     }
 }
 
-/// Show help message.
-fn show_help(app: &mut App) {
-    app.set_status(
-        "h/j/k/l:move  i:insert  x:del gap  </>:shift  u:undo  ::cmd  q:quit  ?:help",
-    );
-}

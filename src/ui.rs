@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
 
@@ -25,6 +25,61 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_alignment(frame, app, chunks[0]);
     render_status_bar(frame, app, chunks[1]);
     render_command_line(frame, app, chunks[2]);
+
+    // Render help overlay if active
+    if app.show_help {
+        render_help(frame);
+    }
+}
+
+/// Height of the ruler in lines.
+const RULER_HEIGHT: u16 = 2;
+
+/// Formats the ID column (row number + sequence ID).
+struct IdFormatter {
+    row_width: usize,
+    id_width: usize,
+    show_row_numbers: bool,
+}
+
+impl IdFormatter {
+    fn new(num_sequences: usize, max_id_len: usize, show_row_numbers: bool) -> Self {
+        Self {
+            row_width: if show_row_numbers {
+                num_sequences.max(1).to_string().len()
+            } else {
+                0
+            },
+            id_width: max_id_len,
+            show_row_numbers,
+        }
+    }
+
+    /// Total width of the formatted ID column.
+    fn width(&self) -> usize {
+        if self.show_row_numbers {
+            // Format: "row_num id " with spaces
+            self.row_width + 1 + self.id_width + 1
+        } else {
+            // Format: "id " with trailing space
+            self.id_width + 1
+        }
+    }
+
+    /// Format a row number and ID.
+    fn format(&self, row: usize, id: &str) -> String {
+        if self.show_row_numbers {
+            format!(
+                "{:>row_w$} {:id_w$} ",
+                row + 1,
+                id,
+                row_w = self.row_width,
+                id_w = self.id_width
+            )
+        } else {
+            format!("{:id_w$} ", id, id_w = self.id_width)
+        }
+    }
 }
 
 /// Render the alignment view.
@@ -49,30 +104,51 @@ fn render_alignment(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Calculate visible area
+    // Split inner area into ruler (fixed, if shown) and sequences (flexible)
+    let ruler_height = if app.show_ruler { RULER_HEIGHT } else { 0 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(ruler_height),
+            Constraint::Min(1),
+        ])
+        .split(inner);
+
+    let ruler_area = chunks[0];
+    let seq_area = chunks[1];
+
+    // Calculate widths using a formatter helper
+    let num_seqs = app.alignment.num_sequences();
     let max_id_len = app.alignment.max_id_len().max(10);
-    let id_width = max_id_len + 2; // padding
+    let id_formatter = IdFormatter::new(num_seqs, max_id_len, app.show_row_numbers);
+    let id_width = id_formatter.width();
     let seq_width = (inner.width as usize).saturating_sub(id_width);
-    let visible_rows = inner.height as usize;
+    let visible_rows = seq_area.height as usize;
 
     // Adjust viewport
     let viewport_row = app.viewport_row;
     let viewport_col = app.viewport_col;
 
-    let mut lines = Vec::new();
+    // Render sticky ruler (if enabled)
+    if app.show_ruler {
+        let ruler_lines = render_ruler(id_width, seq_width, viewport_col);
+        let ruler_paragraph = Paragraph::new(ruler_lines);
+        frame.render_widget(ruler_paragraph, ruler_area);
+    }
 
     // Render sequences
+    let mut lines = Vec::new();
     for row in viewport_row..(viewport_row + visible_rows).min(app.alignment.num_sequences()) {
         let seq = &app.alignment.sequences[row];
         let mut spans = Vec::new();
 
-        // Sequence ID
+        // Row number and sequence ID
         let id_style = if row == app.cursor_row {
-            Style::default().add_modifier(Modifier::BOLD)
+            Style::reset().add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Cyan)
+            Style::reset().fg(Color::Cyan)
         };
-        let id_display = format!("{:width$}", seq.id, width = id_width);
+        let id_display = id_formatter.format(row, &seq.id);
         spans.push(Span::styled(id_display, id_style));
 
         // Sequence data
@@ -81,7 +157,7 @@ fn render_alignment(frame: &mut Frame, app: &App, area: Rect) {
             let ch = seq_chars[col];
             let is_cursor = row == app.cursor_row && col == app.cursor_col;
 
-            let mut style = Style::default();
+            let mut style = Style::reset();
 
             // Apply color scheme
             if let Some(color) = get_color(
@@ -121,15 +197,22 @@ fn render_alignment(frame: &mut Frame, app: &App, area: Rect) {
     if lines.len() < visible_rows {
         if let Some(ss) = app.alignment.ss_cons() {
             let mut spans = Vec::new();
-            let id_display = format!("{:width$}", "#=GC SS_cons", width = id_width);
-            spans.push(Span::styled(id_display, Style::default().fg(Color::Yellow)));
+            // Use blank row number area + SS_cons label
+            let ss_label = format!(
+                "{:>row_w$} {:id_w$} ",
+                "",
+                "#=GC SS_cons",
+                row_w = id_formatter.row_width,
+                id_w = id_formatter.id_width
+            );
+            spans.push(Span::styled(ss_label, Style::reset().fg(Color::Yellow)));
 
             let ss_chars: Vec<char> = ss.chars().collect();
             for col in viewport_col..(viewport_col + seq_width).min(ss_chars.len()) {
                 let ch = ss_chars[col];
                 let is_cursor_col = col == app.cursor_col;
 
-                let mut style = Style::default().fg(Color::Yellow);
+                let mut style = Style::reset().fg(Color::Yellow);
 
                 // Highlight if paired with cursor
                 if let Some(paired) = app.structure_cache.get_pair(col) {
@@ -150,7 +233,63 @@ fn render_alignment(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, seq_area);
+}
+
+/// Render the position ruler (returns two lines: numbers and tick marks).
+fn render_ruler(id_width: usize, seq_width: usize, viewport_col: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    // First line: position numbers
+    let mut number_spans = Vec::new();
+    number_spans.push(Span::styled(
+        " ".repeat(id_width),
+        Style::reset().fg(Color::DarkGray),
+    ));
+
+    let mut number_chars = vec![' '; seq_width];
+    for col in viewport_col..(viewport_col + seq_width) {
+        let pos = col + 1; // 1-based position
+        if pos % 10 == 0 {
+            let pos_str = pos.to_string();
+            let local_col = col - viewport_col;
+            // Place the number so it ends at the marker position
+            let start = local_col.saturating_sub(pos_str.len() - 1);
+            for (i, ch) in pos_str.chars().enumerate() {
+                if start + i < seq_width {
+                    number_chars[start + i] = ch;
+                }
+            }
+        }
+    }
+    number_spans.push(Span::styled(
+        number_chars.into_iter().collect::<String>(),
+        Style::reset().fg(Color::DarkGray),
+    ));
+    lines.push(Line::from(number_spans));
+
+    // Second line: tick marks
+    let mut tick_spans = Vec::new();
+    tick_spans.push(Span::styled(
+        " ".repeat(id_width),
+        Style::reset().fg(Color::DarkGray),
+    ));
+
+    let mut tick_chars = String::with_capacity(seq_width);
+    for col in viewport_col..(viewport_col + seq_width) {
+        let pos = col + 1; // 1-based position
+        if pos % 10 == 0 {
+            tick_chars.push('|');
+        } else if pos % 5 == 0 {
+            tick_chars.push('+');
+        } else {
+            tick_chars.push('·');
+        }
+    }
+    tick_spans.push(Span::styled(tick_chars, Style::reset().fg(Color::DarkGray)));
+    lines.push(Line::from(tick_spans));
+
+    lines
 }
 
 /// Render the status bar.
@@ -244,9 +383,75 @@ fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Calculate visible dimensions for the alignment area.
-pub fn visible_dimensions(area: Rect, max_id_len: usize) -> (usize, usize) {
-    let id_width = max_id_len.max(10) + 2;
-    let inner_height = area.height.saturating_sub(4) as usize; // borders + status + command
-    let inner_width = (area.width as usize).saturating_sub(id_width + 2); // borders
+pub fn visible_dimensions(
+    area: Rect,
+    num_sequences: usize,
+    max_id_len: usize,
+    show_ruler: bool,
+    show_row_numbers: bool,
+) -> (usize, usize) {
+    let id_formatter = IdFormatter::new(num_sequences, max_id_len.max(10), show_row_numbers);
+    let ruler_height = if show_ruler { RULER_HEIGHT } else { 0 };
+    // 4 = borders (2) + status (1) + command (1), plus ruler height if shown
+    let inner_height = area.height.saturating_sub(4 + ruler_height) as usize;
+    let inner_width = (area.width as usize).saturating_sub(id_formatter.width() + 2); // borders
     (inner_height, inner_width)
+}
+
+/// Render help overlay.
+fn render_help(frame: &mut Frame) {
+    let help_text = vec![
+        Line::from(Span::styled("aform-rs Help", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from(Span::styled("Navigation", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from("  h/j/k/l     Move cursor"),
+        Line::from("  0 / $       Start/end of line"),
+        Line::from("  gg / G      First/last sequence"),
+        Line::from("  Ctrl-f/b    Page down/up"),
+        Line::from("  Ctrl-d/u    Half page down/up"),
+        Line::from("  gp          Go to paired base"),
+        Line::from(""),
+        Line::from(Span::styled("Editing", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from("  i           Insert mode (then . for gap)"),
+        Line::from("  x           Delete gap at cursor"),
+        Line::from("  I           Insert gap column"),
+        Line::from("  X           Delete gap column"),
+        Line::from("  < / >       Shift sequence left/right"),
+        Line::from("  { / }       Throw sequence left/right"),
+        Line::from("  u           Undo"),
+        Line::from("  Ctrl-r      Redo"),
+        Line::from(""),
+        Line::from(Span::styled("Commands", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from("  :w          Save file"),
+        Line::from("  :q          Quit (:q! to force)"),
+        Line::from("  :wq         Save and quit"),
+        Line::from("  :color X    Set color (ss/base/cons/off)"),
+        Line::from("  :ruler      Toggle position ruler"),
+        Line::from("  :rownum     Toggle row numbers"),
+        Line::from("  :help       Show this help"),
+        Line::from(""),
+        Line::from(Span::styled("Press any key to close", Style::default().fg(Color::DarkGray))),
+    ];
+
+    // Calculate centered popup area
+    let area = frame.area();
+    let popup_width = 50.min(area.width.saturating_sub(4));
+    let popup_height = (help_text.len() as u16 + 2).min(area.height.saturating_sub(4));
+    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+    let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+    // Clear the area and render popup
+    frame.render_widget(Clear, popup_area);
+
+    let help_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .style(Style::default().bg(Color::Black));
+
+    let help_paragraph = Paragraph::new(help_text)
+        .block(help_block)
+        .style(Style::default().bg(Color::Black));
+
+    frame.render_widget(help_paragraph, popup_area);
 }
