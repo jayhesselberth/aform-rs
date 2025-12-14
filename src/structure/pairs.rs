@@ -1,6 +1,6 @@
 //! Base pair caching and higher-level structure operations.
 
-use super::parser::{parse_structure, BasePair, StructureError};
+use super::parser::{BasePair, StructureError, parse_structure};
 
 /// Cached structure information for an alignment.
 #[derive(Debug, Default)]

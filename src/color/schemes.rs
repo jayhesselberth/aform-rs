@@ -4,7 +4,7 @@ use ratatui::style::Color;
 
 use crate::app::ColorScheme;
 use crate::stockholm::Alignment;
-use crate::structure::{analyze_compensatory, CompensatoryChange, StructureCache};
+use crate::structure::{CompensatoryChange, StructureCache, analyze_compensatory};
 
 /// Colors for helix highlighting (cycling through these).
 pub const HELIX_COLORS: &[Color] = &[

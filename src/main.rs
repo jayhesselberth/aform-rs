@@ -18,13 +18,13 @@ use std::time::Duration;
 
 use clap::Parser;
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     crossterm::{
         event::{self, DisableMouseCapture, EnableMouseCapture, Event},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
-    Terminal,
 };
 
 use app::App;
@@ -99,6 +99,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             app.show_ruler,
             app.show_row_numbers,
             app.split_mode,
+            app.alignment.ss_cons().is_some(),
         );
 
         // Adjust viewport to keep cursor visible

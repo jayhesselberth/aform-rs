@@ -2,11 +2,11 @@
 #![allow(clippy::needless_range_loop)]
 
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 
 use crate::app::{ActivePane, App, ColorScheme, Mode, SplitMode};
@@ -203,22 +203,29 @@ fn render_alignment_pane(
         return;
     }
 
-    // Split inner area into ruler (fixed, if shown) and sequences (flexible)
-    let ruler_height = if app.show_ruler { RULER_HEIGHT } else { 0 };
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(ruler_height), Constraint::Min(1)])
-        .split(inner);
-
-    let ruler_area = chunks[0];
-    let seq_area = chunks[1];
-
     // Calculate widths using a formatter helper
     let num_seqs = app.alignment.num_sequences();
     let max_id_len = app.alignment.max_id_len().max(10);
     let id_formatter = IdFormatter::new(num_seqs, max_id_len, app.show_row_numbers);
     let id_width = id_formatter.width();
     let seq_width = (inner.width as usize).saturating_sub(id_width);
+
+    // Split inner area into ruler (fixed top), sequences (flexible), SS_cons (fixed bottom)
+    let ruler_height = if app.show_ruler { RULER_HEIGHT } else { 0 };
+    let has_ss_cons = app.alignment.ss_cons().is_some();
+    let ss_cons_height: u16 = if has_ss_cons { 1 } else { 0 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(ruler_height),
+            Constraint::Min(1),
+            Constraint::Length(ss_cons_height),
+        ])
+        .split(inner);
+
+    let ruler_area = chunks[0];
+    let seq_area = chunks[1];
+    let ss_cons_area = chunks[2];
     let visible_rows = seq_area.height as usize;
 
     // Render sticky ruler (if enabled)
@@ -301,48 +308,54 @@ fn render_alignment_pane(
         lines.push(Line::from(spans));
     }
 
-    // Render SS_cons line if visible and we have room
-    if lines.len() < visible_rows {
-        if let Some(ss) = app.alignment.ss_cons() {
-            let mut spans = Vec::new();
-            // Use blank row number area + SS_cons label
-            let ss_label = format!(
-                "{:>row_w$} {:id_w$} ",
-                "",
-                "#=GC SS_cons",
-                row_w = id_formatter.row_width,
-                id_w = id_formatter.id_width
-            );
-            spans.push(Span::styled(ss_label, Style::reset().fg(Color::Yellow)));
-
-            let ss_chars: Vec<char> = ss.chars().collect();
-            for col in viewport_col..(viewport_col + seq_width).min(ss_chars.len()) {
-                let ch = ss_chars[col];
-                // Only show cursor column highlight in active pane
-                let is_cursor_col = is_active && col == app.cursor_col;
-
-                let mut style = Style::reset().fg(Color::Yellow);
-
-                // Highlight the paired bracket (works across all panes)
-                if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col) {
-                    if col == paired_col {
-                        style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
-                    }
-                }
-
-                if is_cursor_col {
-                    style = style.add_modifier(Modifier::REVERSED);
-                }
-
-                spans.push(Span::styled(ch.to_string(), style));
-            }
-
-            lines.push(Line::from(spans));
-        }
-    }
-
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, seq_area);
+
+    // Render SS_cons annotation bar (fixed at bottom, like ruler)
+    if let Some(ss) = app.alignment.ss_cons() {
+        let mut spans = Vec::new();
+        // Use blank row number area + SS_cons label with distinct background
+        let ss_label = format!(
+            "{:>row_w$} {:id_w$} ",
+            "═",
+            "#=GC SS_cons",
+            row_w = id_formatter.row_width,
+            id_w = id_formatter.id_width
+        );
+        spans.push(Span::styled(
+            ss_label,
+            Style::reset().fg(Color::Yellow).bg(Color::Rgb(30, 30, 40)),
+        ));
+
+        let ss_chars: Vec<char> = ss.chars().collect();
+        for col in viewport_col..(viewport_col + seq_width).min(ss_chars.len()) {
+            let ch = ss_chars[col];
+            // Only show cursor column highlight in active pane
+            let is_cursor_col = is_active && col == app.cursor_col;
+
+            let mut style = Style::reset().fg(Color::Yellow).bg(Color::Rgb(30, 30, 40));
+
+            // Highlight the paired bracket (works across all panes)
+            if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col) {
+                if col == paired_col {
+                    style = style
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD);
+                }
+            }
+
+            // Column indicator (not cursor - just shows which column)
+            if is_cursor_col {
+                style = style.add_modifier(Modifier::UNDERLINED);
+            }
+
+            spans.push(Span::styled(ch.to_string(), style));
+        }
+
+        let ss_line = Paragraph::new(Line::from(spans));
+        frame.render_widget(ss_line, ss_cons_area);
+    }
 }
 
 /// Render the position ruler (returns two lines: numbers and tick marks).
@@ -509,9 +522,11 @@ pub fn visible_dimensions(
     show_ruler: bool,
     show_row_numbers: bool,
     split_mode: Option<SplitMode>,
+    has_ss_cons: bool,
 ) -> (usize, usize) {
     let id_formatter = IdFormatter::new(num_sequences, max_id_len.max(10), show_row_numbers);
     let ruler_height = if show_ruler { RULER_HEIGHT } else { 0 };
+    let ss_cons_height: u16 = if has_ss_cons { 1 } else { 0 };
 
     // Calculate the alignment area (total - status - command)
     let alignment_area_height = area.height.saturating_sub(2); // status + command
@@ -530,8 +545,8 @@ pub fn visible_dimensions(
         }
     };
 
-    // Subtract borders (2) and ruler height, then calculate sequence area
-    let inner_height = pane_height.saturating_sub(2 + ruler_height) as usize;
+    // Subtract borders (2), ruler height, and SS_cons height
+    let inner_height = pane_height.saturating_sub(2 + ruler_height + ss_cons_height) as usize;
     let inner_width = (pane_width as usize).saturating_sub(id_formatter.width() + 2);
 
     (inner_height, inner_width)

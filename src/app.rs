@@ -297,7 +297,12 @@ impl App {
             let _ = self.structure_cache.update(ss);
         }
 
-        self.set_status(format!("Loaded {}", path.display()));
+        self.set_status(format!(
+            "Loaded {} ({} seqs, SS_cons: {})",
+            path.display(),
+            self.alignment.num_sequences(),
+            self.alignment.ss_cons().is_some()
+        ));
         Ok(())
     }
 
