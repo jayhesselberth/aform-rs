@@ -409,6 +409,7 @@ fn render_help(frame: &mut Frame) {
         Line::from("  Ctrl-f/b    Page down/up"),
         Line::from("  Ctrl-d/u    Half page down/up"),
         Line::from("  gp          Go to paired base"),
+        Line::from("  N|          Go to column N"),
         Line::from(""),
         Line::from(Span::styled("Editing", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
         Line::from("  i           Insert mode (then . for gap)"),

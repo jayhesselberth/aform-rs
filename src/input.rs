@@ -21,7 +21,24 @@ pub fn handle_key(app: &mut App, key: KeyEvent, page_size: usize) {
 
 /// Handle keys in normal mode.
 fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
+    // Save pending status for two-key sequences before clearing
+    let pending_status = app.status_message.clone();
     app.clear_status();
+
+    // Check if this is a digit key for count prefix
+    let is_count_digit = matches!(
+        (key.modifiers, key.code),
+        (KeyModifiers::NONE, KeyCode::Char('1'..='9'))
+    ) || (matches!(key.code, KeyCode::Char('0')) && !app.count_buffer.is_empty());
+
+    // Clear count for non-digit keys (except | which consumes it)
+    let is_pipe = matches!(
+        (key.modifiers, key.code),
+        (KeyModifiers::NONE, KeyCode::Char('|')) | (KeyModifiers::SHIFT, KeyCode::Char('|'))
+    );
+    if !is_count_digit && !is_pipe {
+        app.clear_count();
+    }
 
     match (key.modifiers, key.code) {
         // Quit
@@ -31,6 +48,21 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             } else {
                 app.should_quit = true;
             }
+        }
+
+        // Count prefix digits (1-9 start a count, 0 continues a count)
+        (KeyModifiers::NONE, KeyCode::Char(c @ '1'..='9')) => {
+            app.push_count_digit(c);
+        }
+        (KeyModifiers::NONE, KeyCode::Char('0')) if !app.count_buffer.is_empty() => {
+            app.push_count_digit('0');
+        }
+
+        // Go to column (vim |)
+        (KeyModifiers::NONE, KeyCode::Char('|'))
+        | (KeyModifiers::SHIFT, KeyCode::Char('|')) => {
+            let col = app.take_count();
+            app.goto_column(col);
         }
 
         // Movement - basic
@@ -49,6 +81,7 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
 
         // Movement - line
         (KeyModifiers::NONE, KeyCode::Char('0')) => {
+            // Only reaches here if count_buffer is empty (handled above otherwise)
             app.cursor_line_start();
         }
         (KeyModifiers::NONE, KeyCode::Char('$')) | (KeyModifiers::SHIFT, KeyCode::Char('$')) => {
@@ -95,9 +128,8 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
         // Go to pair
         (KeyModifiers::NONE, KeyCode::Char('p')) => {
             // Check if previous key was 'g'
-            if app.status_message.as_deref() == Some("g...") {
+            if pending_status.as_deref() == Some("g...") {
                 app.goto_pair();
-                app.clear_status();
             }
         }
 
@@ -165,19 +197,13 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
     }
 
     // Handle two-key sequences
-    if let Some(status) = &app.status_message.clone() {
-        match (status.as_str(), key.code) {
+    if let Some(status) = pending_status.as_deref() {
+        match (status, key.code) {
             ("g...", KeyCode::Char('g')) => {
                 app.cursor_first_sequence();
-                app.clear_status();
-            }
-            ("g...", KeyCode::Char('p')) => {
-                app.goto_pair();
-                app.clear_status();
             }
             ("d...", KeyCode::Char('d')) => {
                 app.delete_sequence();
-                app.clear_status();
             }
             _ => {}
         }

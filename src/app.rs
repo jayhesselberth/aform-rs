@@ -123,6 +123,9 @@ pub struct App {
 
     /// Reference sequence index for compensatory coloring.
     pub reference_seq: usize,
+
+    /// Numeric count buffer for vim-style count prefixes (e.g., 50|).
+    pub count_buffer: String,
 }
 
 impl Default for App {
@@ -151,6 +154,7 @@ impl Default for App {
             show_ruler: true,
             show_row_numbers: true,
             reference_seq: 0,
+            count_buffer: String::new(),
         }
     }
 }
@@ -279,6 +283,35 @@ impl App {
         if let Some(paired) = self.structure_cache.get_pair(self.cursor_col) {
             self.cursor_col = paired;
         }
+    }
+
+    /// Jump to a specific column (1-indexed, like vim).
+    pub fn goto_column(&mut self, col: usize) {
+        let max_col = self.alignment.width().saturating_sub(1);
+        // Convert from 1-indexed to 0-indexed, clamping to valid range
+        let target = col.saturating_sub(1).min(max_col);
+        self.cursor_col = target;
+    }
+
+    /// Get the current count from the count buffer, or default to 1.
+    pub fn take_count(&mut self) -> usize {
+        let count = if self.count_buffer.is_empty() {
+            1
+        } else {
+            self.count_buffer.parse().unwrap_or(1)
+        };
+        self.count_buffer.clear();
+        count
+    }
+
+    /// Add a digit to the count buffer.
+    pub fn push_count_digit(&mut self, digit: char) {
+        self.count_buffer.push(digit);
+    }
+
+    /// Clear the count buffer.
+    pub fn clear_count(&mut self) {
+        self.count_buffer.clear();
     }
 
     /// Page down.
