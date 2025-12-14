@@ -386,6 +386,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Mode::Normal => Style::default().bg(Color::Blue).fg(Color::White),
         Mode::Insert => Style::default().bg(Color::Green).fg(Color::Black),
         Mode::Command => Style::default().bg(Color::Yellow).fg(Color::Black),
+        Mode::Search => Style::default().bg(Color::Magenta).fg(Color::White),
     };
 
     let mode_span = Span::styled(format!(" {} ", app.mode.as_str()), mode_style);
@@ -453,13 +454,20 @@ fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
                 Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
             ])
         }
+        Mode::Search => {
+            Line::from(vec![
+                Span::styled("/", Style::default().fg(Color::Magenta)),
+                Span::raw(&app.search_pattern),
+                Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
+            ])
+        }
         _ => {
             if let Some(msg) = &app.status_message {
                 Line::from(Span::raw(msg.as_str()))
             } else {
                 // Show help hint
                 Line::from(Span::styled(
-                    "Press : for commands, ? for help",
+                    "Press : for commands, ? for help, / for search",
                     Style::default().fg(Color::DarkGray),
                 ))
             }

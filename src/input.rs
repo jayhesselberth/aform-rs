@@ -16,6 +16,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent, page_size: usize) {
         Mode::Normal => handle_normal_mode(app, key, page_size),
         Mode::Insert => handle_insert_mode(app, key),
         Mode::Command => handle_command_mode(app, key),
+        Mode::Search => handle_search_mode(app, key),
     }
 }
 
@@ -195,6 +196,17 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             app.set_status("d...");
         }
 
+        // Search
+        (KeyModifiers::NONE, KeyCode::Char('/')) => {
+            app.enter_search_mode();
+        }
+        (KeyModifiers::NONE, KeyCode::Char('n')) => {
+            app.search_next();
+        }
+        (KeyModifiers::SHIFT, KeyCode::Char('N')) => {
+            app.search_prev();
+        }
+
         // Help (some terminals send ? without SHIFT modifier)
         (KeyModifiers::SHIFT, KeyCode::Char('?'))
         | (KeyModifiers::NONE, KeyCode::Char('?')) => {
@@ -294,6 +306,29 @@ fn handle_command_mode(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char(c) => {
             app.command_buffer.push(c);
+        }
+        _ => {}
+    }
+}
+
+/// Handle keys in search mode.
+fn handle_search_mode(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.enter_normal_mode();
+        }
+        KeyCode::Enter => {
+            app.execute_search();
+            app.enter_normal_mode();
+        }
+        KeyCode::Backspace => {
+            app.search_pattern.pop();
+            if app.search_pattern.is_empty() {
+                app.enter_normal_mode();
+            }
+        }
+        KeyCode::Char(c) => {
+            app.search_pattern.push(c);
         }
         _ => {}
     }

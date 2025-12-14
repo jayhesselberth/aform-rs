@@ -13,6 +13,7 @@ pub enum Mode {
     Normal,
     Insert,
     Command,
+    Search,
 }
 
 impl Mode {
@@ -21,6 +22,7 @@ impl Mode {
             Mode::Normal => "NORMAL",
             Mode::Insert => "INSERT",
             Mode::Command => "COMMAND",
+            Mode::Search => "SEARCH",
         }
     }
 }
@@ -145,6 +147,14 @@ pub struct App {
     pub(crate) secondary_viewport_row: usize,
     /// Secondary pane viewport column.
     pub(crate) secondary_viewport_col: usize,
+
+    // === Search state ===
+    /// Current search pattern.
+    pub(crate) search_pattern: String,
+    /// All match positions (row, col).
+    pub(crate) search_matches: Vec<(usize, usize)>,
+    /// Current match index in search_matches.
+    pub(crate) search_match_index: Option<usize>,
 }
 
 impl Default for App {
@@ -178,6 +188,9 @@ impl Default for App {
             active_pane: ActivePane::Primary,
             secondary_viewport_row: 0,
             secondary_viewport_col: 0,
+            search_pattern: String::new(),
+            search_matches: Vec::new(),
+            search_match_index: None,
         }
     }
 }
@@ -442,6 +455,106 @@ impl App {
     pub fn enter_normal_mode(&mut self) {
         self.mode = Mode::Normal;
         self.command_buffer.clear();
+    }
+
+    /// Enter search mode.
+    pub fn enter_search_mode(&mut self) {
+        self.mode = Mode::Search;
+        self.search_pattern.clear();
+    }
+
+    /// Execute the current search pattern.
+    pub fn execute_search(&mut self) {
+        if self.search_pattern.is_empty() {
+            self.enter_normal_mode();
+            return;
+        }
+
+        self.search_matches = self.find_matches(&self.search_pattern.clone());
+
+        if self.search_matches.is_empty() {
+            self.set_status("Pattern not found");
+            self.search_match_index = None;
+        } else {
+            // Find first match at or after cursor position
+            let cursor_pos = (self.cursor_row, self.cursor_col);
+            let first_match_idx = self
+                .search_matches
+                .iter()
+                .position(|&pos| pos >= cursor_pos)
+                .unwrap_or(0);
+
+            self.search_match_index = Some(first_match_idx);
+            self.jump_to_current_match();
+        }
+    }
+
+    /// Jump to the next search match.
+    pub fn search_next(&mut self) {
+        if self.search_matches.is_empty() {
+            if !self.search_pattern.is_empty() {
+                self.set_status("Pattern not found");
+            }
+            return;
+        }
+
+        let current_idx = self.search_match_index.unwrap_or(0);
+        let next_idx = (current_idx + 1) % self.search_matches.len();
+        self.search_match_index = Some(next_idx);
+        self.jump_to_current_match();
+    }
+
+    /// Jump to the previous search match.
+    pub fn search_prev(&mut self) {
+        if self.search_matches.is_empty() {
+            if !self.search_pattern.is_empty() {
+                self.set_status("Pattern not found");
+            }
+            return;
+        }
+
+        let current_idx = self.search_match_index.unwrap_or(0);
+        let prev_idx = if current_idx == 0 {
+            self.search_matches.len() - 1
+        } else {
+            current_idx - 1
+        };
+        self.search_match_index = Some(prev_idx);
+        self.jump_to_current_match();
+    }
+
+    /// Find all matches of a pattern in the alignment.
+    fn find_matches(&self, pattern: &str) -> Vec<(usize, usize)> {
+        let pattern_upper = pattern.to_uppercase();
+        let mut matches = Vec::new();
+
+        for (row, seq) in self.alignment.sequences.iter().enumerate() {
+            let data: String = seq.chars().iter().collect();
+            let data_upper = data.to_uppercase();
+
+            let mut start = 0;
+            while let Some(pos) = data_upper[start..].find(&pattern_upper) {
+                matches.push((row, start + pos));
+                start += pos + 1;
+            }
+        }
+
+        matches
+    }
+
+    /// Jump to the current match and update status.
+    fn jump_to_current_match(&mut self) {
+        if let Some(idx) = self.search_match_index {
+            if let Some(&(row, col)) = self.search_matches.get(idx) {
+                self.cursor_row = row;
+                self.cursor_col = col;
+                self.set_status(&format!(
+                    "Match {}/{}",
+                    idx + 1,
+                    self.search_matches.len()
+                ));
+            }
+        }
     }
 
     /// Execute a command from command mode.
