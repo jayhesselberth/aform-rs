@@ -1,4 +1,5 @@
 //! TUI rendering with ratatui.
+#![allow(clippy::needless_range_loop)]
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -199,10 +200,7 @@ fn render_alignment_pane(
     let ruler_height = if app.show_ruler { RULER_HEIGHT } else { 0 };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(ruler_height),
-            Constraint::Min(1),
-        ])
+        .constraints([Constraint::Length(ruler_height), Constraint::Min(1)])
         .split(inner);
 
     let ruler_area = chunks[0];
@@ -403,11 +401,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let mode_span = Span::styled(format!(" {} ", app.mode.as_str()), mode_style);
 
     // Position info
-    let pos_info = format!(
-        " {}:{} ",
-        app.cursor_row + 1,
-        app.cursor_col + 1
-    );
+    let pos_info = format!(" {}:{} ", app.cursor_row + 1, app.cursor_col + 1);
 
     // Alignment info
     let align_info = format!(
@@ -449,8 +443,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(char_info),
     ];
 
-    let status = Paragraph::new(Line::from(spans))
-        .style(Style::default().bg(Color::DarkGray));
+    let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
 
     frame.render_widget(status, area);
 }
@@ -458,20 +451,16 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 /// Render the command/message line.
 fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
     let content = match app.mode {
-        Mode::Command => {
-            Line::from(vec![
-                Span::styled(":", Style::default().fg(Color::Yellow)),
-                Span::raw(&app.command_buffer),
-                Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
-            ])
-        }
-        Mode::Search => {
-            Line::from(vec![
-                Span::styled("/", Style::default().fg(Color::Magenta)),
-                Span::raw(&app.search_pattern),
-                Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
-            ])
-        }
+        Mode::Command => Line::from(vec![
+            Span::styled(":", Style::default().fg(Color::Yellow)),
+            Span::raw(&app.command_buffer),
+            Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
+        ]),
+        Mode::Search => Line::from(vec![
+            Span::styled("/", Style::default().fg(Color::Magenta)),
+            Span::raw(&app.search_pattern),
+            Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
+        ]),
         _ => {
             if let Some(msg) = &app.status_message {
                 Line::from(Span::raw(msg.as_str()))
@@ -528,9 +517,17 @@ pub fn visible_dimensions(
 /// Render help overlay.
 fn render_help(frame: &mut Frame) {
     let help_text = vec![
-        Line::from(Span::styled("aform-rs Help", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "aform-rs Help",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
-        Line::from(Span::styled("Navigation", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "Navigation",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
         Line::from("  h/j/k/l     Move cursor"),
         Line::from("  0 ^ / $     Start/end of line"),
         Line::from("  gg / G      First/last sequence"),
@@ -539,17 +536,32 @@ fn render_help(frame: &mut Frame) {
         Line::from("  gp          Go to paired base"),
         Line::from("  N|          Go to column N"),
         Line::from(""),
-        Line::from(Span::styled("Search", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "Search",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
         Line::from("  /           Search (U/T tolerant)"),
         Line::from("  n / N       Next/previous match"),
         Line::from(""),
-        Line::from(Span::styled("Split Windows", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "Split Windows",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
         Line::from("  Ctrl-w s    Horizontal split (:sp)"),
         Line::from("  Ctrl-w v    Vertical split (:vs)"),
         Line::from("  Ctrl-w hjkl Switch pane (or arrows)"),
         Line::from("  Ctrl-w q    Close split (:q or :only)"),
         Line::from(""),
-        Line::from(Span::styled("Editing", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "Editing",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
         Line::from("  i           Insert mode (then . for gap)"),
         Line::from("  x           Delete gap at cursor"),
         Line::from("  I           Insert gap column"),
@@ -559,7 +571,12 @@ fn render_help(frame: &mut Frame) {
         Line::from("  u           Undo"),
         Line::from("  Ctrl-r      Redo"),
         Line::from(""),
-        Line::from(Span::styled("Commands", Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "Commands",
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::Yellow),
+        )),
         Line::from("  :w          Save file"),
         Line::from("  :q          Quit (:q! to force)"),
         Line::from("  :wq         Save and quit"),
@@ -568,7 +585,10 @@ fn render_help(frame: &mut Frame) {
         Line::from("  :rownum     Toggle row numbers"),
         Line::from("  :help       Show this help"),
         Line::from(""),
-        Line::from(Span::styled("Press any key to close", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled(
+            "Press any key to close",
+            Style::default().fg(Color::DarkGray),
+        )),
     ];
 
     // Calculate centered popup area

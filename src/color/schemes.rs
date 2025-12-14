@@ -22,13 +22,13 @@ pub const HELIX_COLORS: &[Color] = &[
 /// Colors for base identity (Okabe-Ito colorblind-friendly palette).
 /// See: https://github.com/rnabioco/squiggy-positron
 pub const BASE_COLORS: [(char, Color); 10] = [
-    ('A', Color::Rgb(0, 158, 115)),   // #009E73 green (purine)
+    ('A', Color::Rgb(0, 158, 115)), // #009E73 green (purine)
     ('a', Color::Rgb(0, 158, 115)),
-    ('C', Color::Rgb(240, 228, 66)),  // #F0E442 yellow (pyrimidine)
+    ('C', Color::Rgb(240, 228, 66)), // #F0E442 yellow (pyrimidine)
     ('c', Color::Rgb(240, 228, 66)),
-    ('G', Color::Rgb(0, 114, 178)),   // #0072B2 blue (purine)
+    ('G', Color::Rgb(0, 114, 178)), // #0072B2 blue (purine)
     ('g', Color::Rgb(0, 114, 178)),
-    ('U', Color::Rgb(213, 94, 0)),    // #D55E00 orange (pyrimidine)
+    ('U', Color::Rgb(213, 94, 0)), // #D55E00 orange (pyrimidine)
     ('u', Color::Rgb(213, 94, 0)),
     ('N', Color::Rgb(128, 128, 128)), // #808080 gray (unknown)
     ('n', Color::Rgb(128, 128, 128)),
@@ -36,7 +36,7 @@ pub const BASE_COLORS: [(char, Color); 10] = [
 
 /// Additional base colors for DNA (Okabe-Ito colorblind-friendly palette).
 pub const DNA_BASE_COLORS: [(char, Color); 2] = [
-    ('T', Color::Rgb(213, 94, 0)),    // #D55E00 orange (same as U)
+    ('T', Color::Rgb(213, 94, 0)), // #D55E00 orange (same as U)
     ('t', Color::Rgb(213, 94, 0)),
 ];
 
@@ -57,6 +57,7 @@ pub const COMP_SINGLE_INCOMPATIBLE: Color = Color::Rgb(255, 165, 0); // orange
 pub const COMP_GAP: Color = Color::Magenta;
 
 /// Get color for a character based on the color scheme.
+#[allow(clippy::too_many_arguments)]
 pub fn get_color(
     scheme: ColorScheme,
     ch: char,
@@ -221,15 +222,24 @@ mod tests {
         assert!(get_base_color('G', &gap_chars).is_some());
         assert!(get_base_color('U', &gap_chars).is_some());
         // Gaps return dark gray background
-        assert_eq!(get_base_color('.', &gap_chars), Some(Color::Rgb(40, 40, 40)));
+        assert_eq!(
+            get_base_color('.', &gap_chars),
+            Some(Color::Rgb(40, 40, 40))
+        );
     }
 
     #[test]
     fn test_conservation() {
         let mut alignment = Alignment::new();
-        alignment.sequences.push(Rc::new(Sequence::new("s1", "AAAA")));
-        alignment.sequences.push(Rc::new(Sequence::new("s2", "AAAA")));
-        alignment.sequences.push(Rc::new(Sequence::new("s3", "AACA")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("s1", "AAAA")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("s2", "AAAA")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("s3", "AACA")));
 
         let gap_chars = ['.', '-'];
 

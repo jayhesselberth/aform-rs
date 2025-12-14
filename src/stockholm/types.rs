@@ -205,11 +205,7 @@ impl Alignment {
 
     /// Get the maximum sequence ID length (for formatting).
     pub fn max_id_len(&self) -> usize {
-        self.sequences
-            .iter()
-            .map(|s| s.id.len())
-            .max()
-            .unwrap_or(0)
+        self.sequences.iter().map(|s| s.id.len()).max().unwrap_or(0)
     }
 
     /// Insert a gap at a specific position in all sequences and annotations.
@@ -234,11 +230,10 @@ impl Alignment {
     /// Delete a column if it contains only gaps in all sequences.
     pub fn delete_gap_column(&mut self, col: usize, gap_chars: &[char]) -> bool {
         // Check if column is all gaps (O(1) per sequence now)
-        let all_gaps = self.sequences.iter().all(|s| {
-            s.get(col)
-                .map(|c| gap_chars.contains(&c))
-                .unwrap_or(false)
-        });
+        let all_gaps = self
+            .sequences
+            .iter()
+            .all(|s| s.get(col).map(|c| gap_chars.contains(&c)).unwrap_or(false));
 
         if !all_gaps {
             return false;
@@ -358,7 +353,9 @@ impl Sequence {
         // Find the nearest gap in the specified direction
         let gap_pos = match direction {
             ShiftDirection::Left => (0..col).rev().find(|&i| gap_chars.contains(&self.chars[i])),
-            ShiftDirection::Right => ((col + 1)..self.chars.len()).find(|&i| gap_chars.contains(&self.chars[i])),
+            ShiftDirection::Right => {
+                ((col + 1)..self.chars.len()).find(|&i| gap_chars.contains(&self.chars[i]))
+            }
         };
 
         if let Some(gp) = gap_pos {
@@ -384,14 +381,14 @@ impl Sequence {
     }
 
     /// Convert sequence to uppercase.
-    pub fn to_uppercase(&mut self) {
+    pub fn make_uppercase(&mut self) {
         for ch in &mut self.chars {
             *ch = ch.to_ascii_uppercase();
         }
     }
 
     /// Convert sequence to lowercase.
-    pub fn to_lowercase(&mut self) {
+    pub fn make_lowercase(&mut self) {
         for ch in &mut self.chars {
             *ch = ch.to_ascii_lowercase();
         }
@@ -414,15 +411,21 @@ mod tests {
     #[test]
     fn test_alignment_width() {
         let mut alignment = Alignment::new();
-        alignment.sequences.push(Rc::new(Sequence::new("seq1", "ACGU..ACGU")));
-        alignment.sequences.push(Rc::new(Sequence::new("seq2", "ACGU..ACGU")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq1", "ACGU..ACGU")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq2", "ACGU..ACGU")));
         assert_eq!(alignment.width(), 10);
     }
 
     #[test]
     fn test_insert_gap_column() {
         let mut alignment = Alignment::new();
-        alignment.sequences.push(Rc::new(Sequence::new("seq1", "ACGU")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq1", "ACGU")));
         alignment.insert_gap_column(2, '.');
         assert_eq!(alignment.sequences[0].data(), "AC.GU");
     }

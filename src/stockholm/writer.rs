@@ -104,8 +104,12 @@ seq2/1-10  ACGU..ACGU
     #[test]
     fn test_write_simple() {
         let mut alignment = Alignment::new();
-        alignment.sequences.push(Rc::new(Sequence::new("seq1", "ACGU")));
-        alignment.sequences.push(Rc::new(Sequence::new("seq2", "ACGU")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq1", "ACGU")));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq2", "ACGU")));
         alignment.column_annotations.push(ColumnAnnotation {
             tag: "SS_cons".to_string(),
             data: "<><>".to_string(),

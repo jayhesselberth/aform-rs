@@ -30,7 +30,8 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
     let is_count_digit = matches!(
         (key.modifiers, key.code),
         (KeyModifiers::NONE, KeyCode::Char('1'..='9'))
-    ) || (matches!(key.code, KeyCode::Char('0')) && !app.count_buffer.is_empty());
+    ) || (matches!(key.code, KeyCode::Char('0'))
+        && !app.count_buffer.is_empty());
 
     // Clear count for non-digit keys (except | which consumes it)
     let is_pipe = matches!(
@@ -229,11 +230,14 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             ("Ctrl-w...", KeyCode::Char('v')) => {
                 app.vertical_split();
             }
-            ("Ctrl-w...", KeyCode::Char('w' | 'h' | 'j' | 'k' | 'l')
+            (
+                "Ctrl-w...",
+                KeyCode::Char('w' | 'h' | 'j' | 'k' | 'l')
                 | KeyCode::Left
                 | KeyCode::Right
                 | KeyCode::Up
-                | KeyCode::Down) => {
+                | KeyCode::Down,
+            ) => {
                 app.switch_pane();
             }
             ("Ctrl-w...", KeyCode::Char('q')) => {
@@ -326,4 +330,3 @@ fn handle_search_mode(app: &mut App, key: KeyEvent) {
         _ => {}
     }
 }
-

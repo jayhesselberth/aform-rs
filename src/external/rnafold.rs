@@ -55,10 +55,7 @@ pub fn rnaalifold_available() -> bool {
 /// The sequence should be ungapped (gaps will be removed).
 pub fn fold_sequence(sequence: &str, name: &str) -> Result<FoldResult, RnaFoldError> {
     // Remove gaps from sequence
-    let clean_seq: String = sequence
-        .chars()
-        .filter(|c| c.is_alphabetic())
-        .collect();
+    let clean_seq: String = sequence.chars().filter(|c| c.is_alphabetic()).collect();
 
     if clean_seq.is_empty() {
         return Err(RnaFoldError::ParseError);

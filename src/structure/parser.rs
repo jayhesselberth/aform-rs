@@ -84,7 +84,7 @@ pub fn parse_structure(ss: &str) -> Result<Vec<BasePair>, StructureError> {
     }
 
     // Check for unmatched opening brackets
-    for (_bracket_type, stack) in stacks.iter().enumerate() {
+    for stack in stacks.iter() {
         if let Some(&pos) = stack.first() {
             return Err(StructureError::UnmatchedOpen(pos));
         }
@@ -153,7 +153,12 @@ pub fn get_helix_id(pairs: &[BasePair], col: usize) -> Option<usize> {
 /// Count the number of unique helices.
 #[allow(dead_code)] // API utility for structure analysis
 pub fn count_helices(pairs: &[BasePair]) -> usize {
-    pairs.iter().map(|p| p.helix_id).max().map(|m| m + 1).unwrap_or(0)
+    pairs
+        .iter()
+        .map(|p| p.helix_id)
+        .max()
+        .map(|m| m + 1)
+        .unwrap_or(0)
 }
 
 /// Check if the structure string is valid (balanced brackets).
@@ -170,9 +175,30 @@ mod tests {
     fn test_simple_helix() {
         let pairs = parse_structure("<<<>>>").unwrap();
         assert_eq!(pairs.len(), 3);
-        assert_eq!(pairs[0], BasePair { left: 0, right: 5, helix_id: 0 });
-        assert_eq!(pairs[1], BasePair { left: 1, right: 4, helix_id: 0 });
-        assert_eq!(pairs[2], BasePair { left: 2, right: 3, helix_id: 0 });
+        assert_eq!(
+            pairs[0],
+            BasePair {
+                left: 0,
+                right: 5,
+                helix_id: 0
+            }
+        );
+        assert_eq!(
+            pairs[1],
+            BasePair {
+                left: 1,
+                right: 4,
+                helix_id: 0
+            }
+        );
+        assert_eq!(
+            pairs[2],
+            BasePair {
+                left: 2,
+                right: 3,
+                helix_id: 0
+            }
+        );
     }
 
     #[test]
@@ -220,7 +246,21 @@ mod tests {
     fn test_with_unpaired() {
         let pairs = parse_structure("<<...>>").unwrap();
         assert_eq!(pairs.len(), 2);
-        assert_eq!(pairs[0], BasePair { left: 0, right: 6, helix_id: 0 });
-        assert_eq!(pairs[1], BasePair { left: 1, right: 5, helix_id: 0 });
+        assert_eq!(
+            pairs[0],
+            BasePair {
+                left: 0,
+                right: 6,
+                helix_id: 0
+            }
+        );
+        assert_eq!(
+            pairs[1],
+            BasePair {
+                left: 1,
+                right: 5,
+                helix_id: 0
+            }
+        );
     }
 }

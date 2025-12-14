@@ -1,6 +1,6 @@
 //! Application state and main loop.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::editor::History;
 use crate::stockholm::Alignment;
@@ -258,12 +258,12 @@ impl App {
     }
 
     /// Load an alignment from a file.
-    pub fn load_file(&mut self, path: &PathBuf) -> Result<(), String> {
+    pub fn load_file(&mut self, path: &Path) -> Result<(), String> {
         let alignment = crate::stockholm::parser::parse_file(path)
             .map_err(|e| format!("Failed to parse file: {e}"))?;
 
         self.alignment = alignment;
-        self.file_path = Some(path.clone());
+        self.file_path = Some(path.to_path_buf());
         self.modified = false;
         self.cursor_row = 0;
         self.cursor_col = 0;
@@ -742,11 +742,17 @@ impl App {
             }
             ["ruler"] => {
                 self.show_ruler = !self.show_ruler;
-                self.set_status(format!("Ruler: {}", if self.show_ruler { "on" } else { "off" }));
+                self.set_status(format!(
+                    "Ruler: {}",
+                    if self.show_ruler { "on" } else { "off" }
+                ));
             }
             ["rownum"] => {
                 self.show_row_numbers = !self.show_row_numbers;
-                self.set_status(format!("Row numbers: {}", if self.show_row_numbers { "on" } else { "off" }));
+                self.set_status(format!(
+                    "Row numbers: {}",
+                    if self.show_row_numbers { "on" } else { "off" }
+                ));
             }
             ["split" | "sp"] => {
                 self.horizontal_split();

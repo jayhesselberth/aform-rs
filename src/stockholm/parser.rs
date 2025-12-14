@@ -152,13 +152,17 @@ pub fn parse<R: Read>(reader: R) -> Result<Alignment, ParseError> {
     // Build sequences in order
     for seqid in seq_order {
         if let Some(data) = seq_data.remove(&seqid) {
-            alignment.sequences.push(Rc::new(Sequence::new(seqid, data)));
+            alignment
+                .sequences
+                .push(Rc::new(Sequence::new(seqid, data)));
         }
     }
 
     // Build column annotations
     for (tag, data) in gc_data {
-        alignment.column_annotations.push(ColumnAnnotation { tag, data });
+        alignment
+            .column_annotations
+            .push(ColumnAnnotation { tag, data });
     }
 
     // Build residue annotations
@@ -266,13 +270,17 @@ venusian       CGU.UUCG.ACGUA...AGGA
         assert_eq!(alignment.ss_cons(), Some("<<<<....>>>>........."));
 
         // Check R2R_LABEL is captured as a column annotation
-        let r2r_label = alignment.column_annotations.iter()
+        let r2r_label = alignment
+            .column_annotations
+            .iter()
             .find(|a| a.tag == "R2R_LABEL");
         assert!(r2r_label.is_some());
         assert_eq!(r2r_label.unwrap().data, "...[....]...1...2T...");
 
         // Check R2R #=GF commands are captured
-        let r2r_commands: Vec<_> = alignment.file_annotations.iter()
+        let r2r_commands: Vec<_> = alignment
+            .file_annotations
+            .iter()
             .filter(|a| a.tag == "R2R")
             .collect();
         assert_eq!(r2r_commands.len(), 2);

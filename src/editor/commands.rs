@@ -37,7 +37,10 @@ impl App {
 
         self.save_undo_state();
 
-        let seq_id = self.alignment.sequences.get(self.cursor_row)
+        let seq_id = self
+            .alignment
+            .sequences
+            .get(self.cursor_row)
             .map(|s| s.id.clone());
 
         if let Some(seq_rc) = self.alignment.sequences.get_mut(self.cursor_row) {
@@ -64,14 +67,18 @@ impl App {
     /// Insert a gap column at the cursor position.
     pub fn insert_gap_column(&mut self) {
         self.save_undo_state();
-        self.alignment.insert_gap_column(self.cursor_col, self.gap_char);
+        self.alignment
+            .insert_gap_column(self.cursor_col, self.gap_char);
         self.mark_modified();
         self.update_structure_cache();
     }
 
     /// Delete a gap column at the cursor position.
     pub fn delete_gap_column(&mut self) -> bool {
-        if self.alignment.delete_gap_column(self.cursor_col, &self.gap_chars) {
+        if self
+            .alignment
+            .delete_gap_column(self.cursor_col, &self.gap_chars)
+        {
             self.save_undo_state();
             self.mark_modified();
             self.clamp_cursor();
@@ -85,7 +92,10 @@ impl App {
 
     /// Internal shift without undo/status - consolidated implementation.
     fn shift_sequence_internal(&mut self, direction: ShiftDirection) -> bool {
-        let seq_id = self.alignment.sequences.get(self.cursor_row)
+        let seq_id = self
+            .alignment
+            .sequences
+            .get(self.cursor_row)
             .map(|s| s.id.clone());
 
         if let Some(seq_rc) = self.alignment.sequences.get_mut(self.cursor_row) {
@@ -95,7 +105,8 @@ impl App {
                 if let Some(id) = seq_id {
                     if let Some(annotations) = self.alignment.residue_annotations.get_mut(&id) {
                         for ann in annotations {
-                            let mut temp = crate::stockholm::Sequence::new("temp", ann.data.clone());
+                            let mut temp =
+                                crate::stockholm::Sequence::new("temp", ann.data.clone());
                             temp.shift(self.cursor_col, direction, &self.gap_chars);
                             ann.data = temp.data();
                         }
@@ -163,11 +174,10 @@ impl App {
 
     /// Undo the last action.
     pub fn undo(&mut self) {
-        if let Some(snapshot) = self.history.undo(
-            &self.alignment,
-            self.cursor_row,
-            self.cursor_col,
-        ) {
+        if let Some(snapshot) = self
+            .history
+            .undo(&self.alignment, self.cursor_row, self.cursor_col)
+        {
             self.alignment = snapshot.alignment;
             self.cursor_row = snapshot.cursor_row;
             self.cursor_col = snapshot.cursor_col;
@@ -181,11 +191,10 @@ impl App {
 
     /// Redo the last undone action.
     pub fn redo(&mut self) {
-        if let Some(snapshot) = self.history.redo(
-            &self.alignment,
-            self.cursor_row,
-            self.cursor_col,
-        ) {
+        if let Some(snapshot) = self
+            .history
+            .redo(&self.alignment, self.cursor_row, self.cursor_col)
+        {
             self.alignment = snapshot.alignment;
             self.cursor_row = snapshot.cursor_row;
             self.cursor_col = snapshot.cursor_col;
@@ -199,7 +208,8 @@ impl App {
 
     /// Save current state for undo.
     fn save_undo_state(&mut self) {
-        self.history.save(&self.alignment, self.cursor_row, self.cursor_col);
+        self.history
+            .save(&self.alignment, self.cursor_row, self.cursor_col);
     }
 
     /// Delete the current sequence.
@@ -225,7 +235,7 @@ impl App {
     pub fn uppercase_alignment(&mut self) {
         self.save_undo_state();
         for seq in &mut self.alignment.sequences {
-            Rc::make_mut(seq).to_uppercase();
+            Rc::make_mut(seq).make_uppercase();
         }
         self.mark_modified();
     }
@@ -234,7 +244,7 @@ impl App {
     pub fn lowercase_alignment(&mut self) {
         self.save_undo_state();
         for seq in &mut self.alignment.sequences {
-            Rc::make_mut(seq).to_lowercase();
+            Rc::make_mut(seq).make_lowercase();
         }
         self.mark_modified();
     }

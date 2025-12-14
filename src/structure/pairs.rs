@@ -104,7 +104,7 @@ pub fn is_valid_pair(base1: char, base2: char) -> bool {
         ('A', 'T') | ('T', 'A') |  // A-T (DNA)
         ('G', 'C') | ('C', 'G') |  // G-C
         ('G', 'U') | ('U', 'G') |  // G-U wobble
-        ('G', 'T') | ('T', 'G')    // G-T wobble (DNA)
+        ('G', 'T') | ('T', 'G') // G-T wobble (DNA)
     )
 }
 
@@ -143,8 +143,11 @@ pub fn analyze_compensatory(
     let ref_chars: Vec<char> = ref_seq.chars().collect();
     let query_chars: Vec<char> = query_seq.chars().collect();
 
-    if col >= ref_chars.len() || col >= query_chars.len() ||
-       paired_col >= ref_chars.len() || paired_col >= query_chars.len() {
+    if col >= ref_chars.len()
+        || col >= query_chars.len()
+        || paired_col >= ref_chars.len()
+        || paired_col >= query_chars.len()
+    {
         return CompensatoryChange::Unpaired;
     }
 
@@ -158,8 +161,8 @@ pub fn analyze_compensatory(
         return CompensatoryChange::InvolvesGap;
     }
 
-    let left_changed = ref_left.to_ascii_uppercase() != query_left.to_ascii_uppercase();
-    let right_changed = ref_right.to_ascii_uppercase() != query_right.to_ascii_uppercase();
+    let left_changed = !ref_left.eq_ignore_ascii_case(&query_left);
+    let right_changed = !ref_right.eq_ignore_ascii_case(&query_right);
     let still_valid = is_valid_pair(query_left, query_right);
 
     match (left_changed, right_changed, still_valid) {

@@ -60,7 +60,12 @@ impl History {
     }
 
     /// Undo the last change, returning the previous state.
-    pub fn undo(&mut self, current: &Alignment, cursor_row: usize, cursor_col: usize) -> Option<Snapshot> {
+    pub fn undo(
+        &mut self,
+        current: &Alignment,
+        cursor_row: usize,
+        cursor_col: usize,
+    ) -> Option<Snapshot> {
         if let Some(snapshot) = self.undo_stack.pop() {
             // Save current state to redo stack
             self.redo_stack.push(Snapshot {
@@ -75,7 +80,12 @@ impl History {
     }
 
     /// Redo the last undone change.
-    pub fn redo(&mut self, current: &Alignment, cursor_row: usize, cursor_col: usize) -> Option<Snapshot> {
+    pub fn redo(
+        &mut self,
+        current: &Alignment,
+        cursor_row: usize,
+        cursor_col: usize,
+    ) -> Option<Snapshot> {
         if let Some(snapshot) = self.redo_stack.pop() {
             // Save current state to undo stack
             self.undo_stack.push(Snapshot {
@@ -128,7 +138,9 @@ mod tests {
 
     fn make_alignment(data: &str) -> Alignment {
         let mut alignment = Alignment::new();
-        alignment.sequences.push(Rc::new(Sequence::new("seq1", data)));
+        alignment
+            .sequences
+            .push(Rc::new(Sequence::new("seq1", data)));
         alignment
     }
 
