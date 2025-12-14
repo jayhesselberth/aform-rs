@@ -151,8 +151,8 @@ pub struct App {
     // === Search state ===
     /// Current search pattern.
     pub(crate) search_pattern: String,
-    /// All match positions (row, col).
-    pub(crate) search_matches: Vec<(usize, usize)>,
+    /// All match positions (row, start_col, end_col) - end_col is exclusive.
+    pub(crate) search_matches: Vec<(usize, usize, usize)>,
     /// Current match index in search_matches.
     pub(crate) search_match_index: Option<usize>,
 }
@@ -385,6 +385,14 @@ impl App {
         self.cursor_col = target;
     }
 
+    /// Jump to a specific row (1-indexed, like vim :N).
+    pub fn goto_row(&mut self, row: usize) {
+        let max_row = self.alignment.num_sequences().saturating_sub(1);
+        // Convert from 1-indexed to 0-indexed, clamping to valid range
+        let target = row.saturating_sub(1).min(max_row);
+        self.cursor_row = target;
+    }
+
     /// Get the current count from the count buffer, or default to 1.
     pub fn take_count(&mut self) -> usize {
         let count = if self.count_buffer.is_empty() {
@@ -463,6 +471,13 @@ impl App {
         self.search_pattern.clear();
     }
 
+    /// Clear search highlighting.
+    pub fn clear_search(&mut self) {
+        self.search_pattern.clear();
+        self.search_matches.clear();
+        self.search_match_index = None;
+    }
+
     /// Execute the current search pattern.
     pub fn execute_search(&mut self) {
         if self.search_pattern.is_empty() {
@@ -473,15 +488,16 @@ impl App {
         self.search_matches = self.find_matches(&self.search_pattern.clone());
 
         if self.search_matches.is_empty() {
-            self.set_status("Pattern not found");
+            self.set_status("Pattern not found (ignoring gaps)");
             self.search_match_index = None;
         } else {
             // Find first match at or after cursor position
-            let cursor_pos = (self.cursor_row, self.cursor_col);
             let first_match_idx = self
                 .search_matches
                 .iter()
-                .position(|&pos| pos >= cursor_pos)
+                .position(|&(row, start_col, _)| {
+                    (row, start_col) >= (self.cursor_row, self.cursor_col)
+                })
                 .unwrap_or(0);
 
             self.search_match_index = Some(first_match_idx);
@@ -489,7 +505,7 @@ impl App {
         }
     }
 
-    /// Jump to the next search match.
+    /// Jump to the next search match relative to current cursor position.
     pub fn search_next(&mut self) {
         if self.search_matches.is_empty() {
             if !self.search_pattern.is_empty() {
@@ -498,13 +514,19 @@ impl App {
             return;
         }
 
-        let current_idx = self.search_match_index.unwrap_or(0);
-        let next_idx = (current_idx + 1) % self.search_matches.len();
+        // Find first match strictly after current cursor position
+        let cursor_pos = (self.cursor_row, self.cursor_col);
+        let next_idx = self
+            .search_matches
+            .iter()
+            .position(|&(row, start_col, _)| (row, start_col) > cursor_pos)
+            .unwrap_or(0); // Wrap to first match if none after cursor
+
         self.search_match_index = Some(next_idx);
         self.jump_to_current_match();
     }
 
-    /// Jump to the previous search match.
+    /// Jump to the previous search match relative to current cursor position.
     pub fn search_prev(&mut self) {
         if self.search_matches.is_empty() {
             if !self.search_pattern.is_empty() {
@@ -513,45 +535,91 @@ impl App {
             return;
         }
 
-        let current_idx = self.search_match_index.unwrap_or(0);
-        let prev_idx = if current_idx == 0 {
-            self.search_matches.len() - 1
-        } else {
-            current_idx - 1
-        };
+        // Find last match strictly before current cursor position
+        let cursor_pos = (self.cursor_row, self.cursor_col);
+        let prev_idx = self
+            .search_matches
+            .iter()
+            .rposition(|&(row, start_col, _)| (row, start_col) < cursor_pos)
+            .unwrap_or(self.search_matches.len() - 1); // Wrap to last match if none before cursor
+
         self.search_match_index = Some(prev_idx);
         self.jump_to_current_match();
     }
 
     /// Find all matches of a pattern in the alignment.
-    /// Case-insensitive and U/T tolerant (RNA/DNA equivalent).
-    fn find_matches(&self, pattern: &str) -> Vec<(usize, usize)> {
+    /// Case-insensitive, U/T tolerant (RNA/DNA equivalent), and ignores gap characters.
+    /// Returns (row, start_col, end_col) where end_col is exclusive.
+    fn find_matches(&self, pattern: &str) -> Vec<(usize, usize, usize)> {
         let pattern_normalized = Self::normalize_for_search(pattern);
+        let pattern_chars: Vec<char> = pattern_normalized.chars().collect();
         let mut matches = Vec::new();
 
-        for (row, seq) in self.alignment.sequences.iter().enumerate() {
-            let data: String = seq.chars().iter().collect();
-            let data_normalized = Self::normalize_for_search(&data);
+        if pattern_chars.is_empty() {
+            return matches;
+        }
 
-            let mut start = 0;
-            while let Some(pos) = data_normalized[start..].find(&pattern_normalized) {
-                matches.push((row, start + pos));
-                start += pos + 1;
+        for (row, seq) in self.alignment.sequences.iter().enumerate() {
+            let seq_chars: Vec<char> = seq.chars().to_vec();
+
+            // Try matching starting at each position
+            let mut col = 0;
+            while col < seq_chars.len() {
+                if let Some(end_col) = self.try_match_at(&seq_chars, col, &pattern_chars) {
+                    matches.push((row, col, end_col));
+                    // Move past the first non-gap character to find overlapping matches
+                    col += 1;
+                    while col < seq_chars.len() && self.gap_chars.contains(&seq_chars[col]) {
+                        col += 1;
+                    }
+                } else {
+                    col += 1;
+                }
             }
         }
 
         matches
     }
 
+    /// Try to match pattern starting at given column, skipping gaps.
+    /// Returns the end column (exclusive) if match found, None otherwise.
+    fn try_match_at(&self, seq: &[char], start_col: usize, pattern: &[char]) -> Option<usize> {
+        let mut seq_idx = start_col;
+        let mut pat_idx = 0;
+
+        while pat_idx < pattern.len() {
+            // Skip gaps in sequence
+            while seq_idx < seq.len() && self.gap_chars.contains(&seq[seq_idx]) {
+                seq_idx += 1;
+            }
+
+            if seq_idx >= seq.len() {
+                return None; // Ran out of sequence
+            }
+
+            let seq_char = Self::normalize_char(seq[seq_idx]);
+            if seq_char != pattern[pat_idx] {
+                return None; // Mismatch
+            }
+
+            seq_idx += 1;
+            pat_idx += 1;
+        }
+
+        Some(seq_idx)
+    }
+
+    /// Normalize a single character for search: uppercase and T→U.
+    fn normalize_char(c: char) -> char {
+        match c.to_ascii_uppercase() {
+            'T' => 'U',
+            other => other,
+        }
+    }
+
     /// Normalize a string for search: uppercase and T→U for RNA/DNA equivalence.
     fn normalize_for_search(s: &str) -> String {
         s.to_uppercase().replace('T', "U")
-    }
-
-    /// Get the length of the current search pattern.
-    #[allow(dead_code)] // Public API
-    pub fn search_pattern_len(&self) -> usize {
-        self.search_pattern.len()
     }
 
     /// Check if a position is part of a search match.
@@ -561,11 +629,10 @@ impl App {
             return None;
         }
 
-        let pattern_len = self.search_pattern.len();
         let current_idx = self.search_match_index;
 
-        for (idx, &(match_row, match_col)) in self.search_matches.iter().enumerate() {
-            if row == match_row && col >= match_col && col < match_col + pattern_len {
+        for (idx, &(match_row, start_col, end_col)) in self.search_matches.iter().enumerate() {
+            if row == match_row && col >= start_col && col < end_col {
                 return Some(current_idx == Some(idx));
             }
         }
@@ -576,11 +643,11 @@ impl App {
     /// Jump to the current match and update status.
     fn jump_to_current_match(&mut self) {
         if let Some(idx) = self.search_match_index {
-            if let Some(&(row, col)) = self.search_matches.get(idx) {
+            if let Some(&(row, start_col, _end_col)) = self.search_matches.get(idx) {
                 self.cursor_row = row;
-                self.cursor_col = col;
-                self.set_status(&format!(
-                    "Match {}/{}",
+                self.cursor_col = start_col;
+                self.set_status(format!(
+                    "Match {}/{} (ignoring gaps)",
                     idx + 1,
                     self.search_matches.len()
                 ));
@@ -706,8 +773,16 @@ impl App {
                 self.convert_u_to_t();
                 self.set_status("Converted U to T");
             }
+            ["noh" | "nohlsearch"] => {
+                self.clear_search();
+            }
             _ => {
-                self.set_status(format!("Unknown command: {command}"));
+                // Check if command is a line number (e.g., :1, :42)
+                if let Ok(line_num) = command.parse::<usize>() {
+                    self.goto_row(line_num);
+                } else {
+                    self.set_status(format!("Unknown command: {command}"));
+                }
             }
         }
     }
