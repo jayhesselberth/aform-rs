@@ -1,0 +1,19 @@
+# Rust
+/target/
+Cargo.lock
+
+# External sources
+/ext/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Environment
+.env
