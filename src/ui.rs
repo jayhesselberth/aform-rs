@@ -199,8 +199,7 @@ fn render_alignment_pane(
     frame.render_widget(block, area);
 
     if app.alignment.sequences.is_empty() {
-        let msg = Paragraph::new("No alignment loaded. Use :e <file> to open a file.");
-        frame.render_widget(msg, inner);
+        render_splash(frame, inner);
         return;
     }
 
@@ -521,6 +520,113 @@ pub fn visible_dimensions(
     let inner_width = (pane_width as usize).saturating_sub(id_formatter.width() + 2);
 
     (inner_height, inner_width)
+}
+
+/// Render splash screen when no file is loaded.
+fn render_splash(frame: &mut Frame, area: Rect) {
+    // Rainbow colors for the helix
+    let helix_colors = [
+        Color::Rgb(255, 0, 0),     // Red
+        Color::Rgb(255, 127, 0),   // Orange
+        Color::Rgb(255, 255, 0),   // Yellow
+        Color::Rgb(0, 255, 0),     // Green
+        Color::Rgb(0, 127, 255),   // Blue
+        Color::Rgb(127, 0, 255),   // Purple
+    ];
+
+    let version = env!("CARGO_PKG_VERSION");
+    let description = "Terminal Stockholm alignment editor";
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Add some vertical padding
+    let vertical_padding = area.height.saturating_sub(20) / 2;
+    for _ in 0..vertical_padding {
+        lines.push(Line::from(""));
+    }
+
+    // Calculate horizontal padding for centering
+    // Logo block is about 38 chars wide
+    let logo_width = 38;
+    let h_pad = (area.width as usize).saturating_sub(logo_width) / 2;
+    let pad = " ".repeat(h_pad);
+
+    // RNA helix + aform logo (hand-crafted ASCII art)
+    let logo_lines = [
+        ("  A───U  ", "                             "),
+        (" G─┐ ┌─C ", "  __ _ / _|___  _ _ _ __     "),
+        ("   │×│   ", " / _` |  _/ _ \\| '_| '  \\   "),
+        (" C─┘ └─G ", " \\__,_|_| \\___/|_| |_|_|_|  "),
+        ("  U───A  ", "                             "),
+        (" A─┐ ┌─U ", "                             "),
+        ("   │×│   ", "                             "),
+        (" G─┘ └─C ", "                             "),
+    ];
+
+    for (i, (helix, text)) in logo_lines.iter().enumerate() {
+        let helix_color = helix_colors[i % helix_colors.len()];
+        lines.push(Line::from(vec![
+            Span::raw(pad.clone()),
+            Span::styled(*helix, Style::default().fg(helix_color)),
+            Span::styled(
+                *text,
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+
+    // Version and description (centered)
+    let ver_str = format!("v{version}");
+    let ver_pad = " ".repeat((area.width as usize).saturating_sub(ver_str.len()) / 2);
+    lines.push(Line::from(vec![
+        Span::raw(ver_pad),
+        Span::styled(ver_str, Style::default().fg(Color::DarkGray)),
+    ]));
+
+    let desc_pad = " ".repeat((area.width as usize).saturating_sub(description.len()) / 2);
+    lines.push(Line::from(vec![
+        Span::raw(desc_pad),
+        Span::styled(description, Style::default().fg(Color::Gray)),
+    ]));
+    lines.push(Line::from(""));
+
+    // Quick start (centered)
+    let qs_title = "Quick Start";
+    let qs_pad = " ".repeat((area.width as usize).saturating_sub(qs_title.len()) / 2);
+    lines.push(Line::from(vec![
+        Span::raw(qs_pad),
+        Span::styled(
+            qs_title,
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+
+    // Commands - use fixed width format for alignment
+    let commands = [
+        (":e       ", "Browse and open a file"),
+        (":e <file>", "Open a specific file  "),
+        ("?        ", "Show help             "),
+        (":q       ", "Quit                  "),
+    ];
+    let cmd_width = 35;
+    let cmd_pad = " ".repeat((area.width as usize).saturating_sub(cmd_width) / 2);
+
+    for (cmd, desc) in commands {
+        lines.push(Line::from(vec![
+            Span::raw(cmd_pad.clone()),
+            Span::styled(cmd, Style::default().fg(Color::Green)),
+            Span::raw("  "),
+            Span::raw(desc),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, area);
 }
 
 /// Render file explorer for browse mode.
