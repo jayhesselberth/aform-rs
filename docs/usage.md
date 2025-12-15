@@ -5,11 +5,10 @@
 ```bash
 aform alignment.stk
 aform --color structure alignment.stk
+aform --cluster --tree --conservation alignment.stk
 ```
 
-Or use `:e` to browse files from within the editor.
-
-![File browser](images/file-browser.gif)
+Use `:e <path>` to open files from within the editor (Tab completes paths).
 
 ## Modes
 
@@ -69,7 +68,7 @@ In Normal mode, `p` pastes the yanked block.
 | `:w` | Save file |
 | `:q` | Quit |
 | `:wq` | Save and quit |
-| `:e [path]` | Open file browser |
+| `:e <path>` | Open file (Tab completes path) |
 | `:color <scheme>` | Set color scheme |
 | `:trim` | Remove gap-only columns (both ends) |
 | `:trimleft` | Remove leading gap-only columns |
@@ -87,6 +86,9 @@ In Normal mode, `p` pastes the yanked block.
 | `:collapse` | Toggle collapse of identical sequences |
 | `:consensus` | Toggle consensus sequence bar |
 | `:conservation` | Toggle conservation level bar |
+| `:ruler` | Toggle column ruler |
+| `:rownum` | Toggle row numbers |
+| `:shortid` | Toggle short IDs (strip /start-end suffix) |
 | `:type <type>` | Set sequence type (rna/dna/protein/auto) |
 
 ## Clustering

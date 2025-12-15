@@ -31,13 +31,21 @@ cargo build --release
 ## Usage
 
 ```bash
-aform-rs [OPTIONS] [FILE]
+aform [OPTIONS] [FILE]
 
 Arguments:
   [FILE]  Stockholm alignment file to open
 
 Options:
-  -c, --color <COLOR>  Initial color scheme (none, structure, base, conservation) [default: none]
+  -c, --color <COLOR>  Color scheme (none, structure, base, conservation, compensatory)
+      --consensus      Show consensus sequence
+      --conservation   Show conservation bar
+      --cluster        Cluster sequences by similarity
+      --collapse       Collapse identical sequences
+      --tree           Show dendrogram tree (implies --cluster)
+      --ruler          Show column ruler
+      --rownum         Show row numbers
+      --shortid        Show short IDs (strip /start-end suffix)
   -h, --help           Print help
   -V, --version        Print version
 ```
@@ -84,6 +92,7 @@ Options:
 | `:q` | Quit (fails if unsaved changes) |
 | `:q!` | Force quit |
 | `:wq` | Save and quit |
+| `:e <path>` | Open file (Tab to complete path) |
 | `:w <path>` | Save to new file |
 | `:color <scheme>` | Set color scheme (see below) |
 | `:set gap=<char>` | Set gap character |
@@ -95,6 +104,9 @@ Options:
 | `:collapse` | Toggle collapse of identical sequences |
 | `:consensus` | Toggle consensus sequence bar |
 | `:conservation` | Toggle conservation level bar |
+| `:ruler` | Toggle column ruler |
+| `:rownum` | Toggle row numbers |
+| `:shortid` | Toggle short IDs (strip /start-end) |
 | `:type <type>` | Set sequence type (rna/dna/protein/auto) |
 
 ## Color Schemes
