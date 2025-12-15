@@ -119,6 +119,23 @@ struct IdFormatter {
     collapse_width: usize,
 }
 
+/// Format an annotation bar label with consistent styling.
+fn format_annotation_label(
+    name: &str,
+    id_formatter: &IdFormatter,
+    fg: Color,
+    bg: Color,
+) -> Line<'static> {
+    let label = format!(
+        "{:>row_w$} {:id_w$}",
+        "═",
+        name,
+        row_w = id_formatter.row_width,
+        id_w = id_formatter.id_width
+    );
+    Line::from(Span::styled(label, Style::reset().fg(fg).bg(bg)))
+}
+
 impl IdFormatter {
     fn new(
         num_sequences: usize,
@@ -412,52 +429,32 @@ fn render_ids_column(
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, ids_seq_area);
 
-    // Render annotation labels
+    // Render annotation labels using helper
     let mut annotation_lines = Vec::new();
 
-    // SS_cons label
     if app.alignment.ss_cons().is_some() {
-        let ss_label = format!(
-            "{:>row_w$} {:id_w$}",
-            "═",
+        annotation_lines.push(format_annotation_label(
             "#=GC SS_cons",
-            row_w = id_formatter.row_width,
-            id_w = id_formatter.id_width
-        );
-        annotation_lines.push(Line::from(Span::styled(
-            ss_label,
-            Style::reset().fg(Color::Yellow).bg(Color::Rgb(30, 30, 40)),
-        )));
+            id_formatter,
+            Color::Yellow,
+            Color::Rgb(30, 30, 40),
+        ));
     }
-
-    // Consensus label
     if app.show_consensus {
-        let cons_label = format!(
-            "{:>row_w$} {:id_w$}",
-            "═",
+        annotation_lines.push(format_annotation_label(
             "Consensus",
-            row_w = id_formatter.row_width,
-            id_w = id_formatter.id_width
-        );
-        annotation_lines.push(Line::from(Span::styled(
-            cons_label,
-            Style::reset().fg(Color::Cyan).bg(Color::Rgb(30, 40, 30)),
-        )));
+            id_formatter,
+            Color::Cyan,
+            Color::Rgb(30, 40, 30),
+        ));
     }
-
-    // Conservation label
     if app.show_conservation_bar {
-        let cons_label = format!(
-            "{:>row_w$} {:id_w$}",
-            "═",
+        annotation_lines.push(format_annotation_label(
             "Conservation",
-            row_w = id_formatter.row_width,
-            id_w = id_formatter.id_width
-        );
-        annotation_lines.push(Line::from(Span::styled(
-            cons_label,
-            Style::reset().fg(Color::Magenta).bg(Color::Rgb(40, 30, 40)),
-        )));
+            id_formatter,
+            Color::Magenta,
+            Color::Rgb(40, 30, 40),
+        ));
     }
 
     if !annotation_lines.is_empty() {
@@ -885,7 +882,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
             .fg(Color::White),
     };
 
-    let mode_span = Span::styled(format!(" {} ", app.mode.as_str()), mode_style);
+    let mode_span = Span::styled(format!(" {} ", app.mode.as_ref()), mode_style);
 
     // Position info
     let pos_info = format!(" {}:{} ", app.cursor_row + 1, app.cursor_col + 1);
@@ -911,7 +908,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 
     // Color scheme
     let color_info = if app.color_scheme != ColorScheme::None {
-        format!(" [{}] ", app.color_scheme.as_str())
+        format!(" [{}] ", app.color_scheme.as_ref())
     } else {
         String::new()
     };
@@ -965,7 +962,7 @@ fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
         ]),
         Mode::Search => Line::from(vec![
             Span::styled("/", Style::default().fg(Color::Magenta)),
-            Span::raw(&app.search_pattern),
+            Span::raw(&app.search.pattern),
             Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ]),
         _ => {

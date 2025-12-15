@@ -8,6 +8,7 @@ mod clustering;
 mod color;
 mod editor;
 mod external;
+mod history;
 mod input;
 mod stockholm;
 mod structure;

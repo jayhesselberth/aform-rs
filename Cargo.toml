@@ -23,6 +23,7 @@ unicode-width = "0.2"
 kodama = "0.3"
 termbg = "0.6"
 flate2 = "1.1"
+strum = { version = "0.26", features = ["derive"] }
 
 [profile.release]
 lto = true

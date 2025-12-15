@@ -4,6 +4,84 @@ use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Mode};
 
+/// Handle movement keys common to normal and visual modes.
+/// Returns true if the key was handled as a movement.
+fn handle_movement_keys(app: &mut App, key: KeyEvent, page_size: usize) -> bool {
+    match (key.modifiers, key.code) {
+        // Basic movement (hjkl and arrows)
+        (KeyModifiers::NONE, KeyCode::Char('h') | KeyCode::Left) => {
+            app.cursor_left();
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
+            app.cursor_down();
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::Char('k') | KeyCode::Up) => {
+            app.cursor_up();
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::Char('l') | KeyCode::Right) => {
+            app.cursor_right();
+            true
+        }
+
+        // Line movement
+        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('^')) => {
+            app.cursor_line_start();
+            true
+        }
+        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('$')) => {
+            app.cursor_line_end();
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::Home) => {
+            app.cursor_line_start();
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::End) => {
+            app.cursor_line_end();
+            true
+        }
+
+        // Document movement
+        (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
+            app.cursor_last_sequence();
+            true
+        }
+
+        // Page movement
+        (KeyModifiers::CONTROL, KeyCode::Char('f')) | (KeyModifiers::NONE, KeyCode::PageDown) => {
+            app.page_down(page_size);
+            true
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('b')) | (KeyModifiers::NONE, KeyCode::PageUp) => {
+            app.page_up(page_size);
+            true
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+            app.half_page_down(page_size);
+            true
+        }
+        (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
+            app.half_page_up(page_size);
+            true
+        }
+
+        // Word-like movement (jump by 10 columns)
+        (KeyModifiers::NONE, KeyCode::Char('w')) => {
+            app.scroll_right(10);
+            true
+        }
+        (KeyModifiers::NONE, KeyCode::Char('b')) => {
+            app.scroll_left(10);
+            true
+        }
+
+        _ => false,
+    }
+}
+
 /// Handle a key event.
 pub fn handle_key(app: &mut App, key: KeyEvent, page_size: usize) {
     // Close help overlay on any keypress
@@ -44,6 +122,16 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
         app.clear_count();
     }
 
+    // Try shared movement keys first (unless it's a key with special normal-mode handling)
+    let is_special_normal_key = matches!(
+        (key.modifiers, key.code),
+        (KeyModifiers::NONE, KeyCode::Char('0' | 'g' | 'w' | 'b'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('w'))
+    );
+    if !is_special_normal_key && handle_movement_keys(app, key, page_size) {
+        return;
+    }
+
     match (key.modifiers, key.code) {
         // Quit
         (KeyModifiers::NONE, KeyCode::Char('q')) => {
@@ -68,57 +156,14 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             app.goto_column(col);
         }
 
-        // Movement - basic
-        (KeyModifiers::NONE, KeyCode::Char('h') | KeyCode::Left) => {
-            app.cursor_left();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
-            app.cursor_down();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('k') | KeyCode::Up) => {
-            app.cursor_up();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('l') | KeyCode::Right) => {
-            app.cursor_right();
-        }
-
-        // Movement - line
-        (KeyModifiers::NONE, KeyCode::Char('0'))
-        | (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('^')) => {
-            // Only reaches here if count_buffer is empty (handled above otherwise)
+        // Movement - line start (0 only when not building count)
+        (KeyModifiers::NONE, KeyCode::Char('0')) => {
             app.cursor_line_start();
         }
-        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('$')) => {
-            app.cursor_line_end();
-        }
-        (KeyModifiers::NONE, KeyCode::Home) => {
-            app.cursor_line_start();
-        }
-        (KeyModifiers::NONE, KeyCode::End) => {
-            app.cursor_line_end();
-        }
 
-        // Movement - document
+        // Movement - document (g starts two-key sequence)
         (KeyModifiers::NONE, KeyCode::Char('g')) => {
-            // Waiting for second 'g'
             app.set_status("g...");
-        }
-        (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
-            app.cursor_last_sequence();
-        }
-
-        // Movement - scrolling
-        (KeyModifiers::CONTROL, KeyCode::Char('f')) | (KeyModifiers::NONE, KeyCode::PageDown) => {
-            app.page_down(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('b')) | (KeyModifiers::NONE, KeyCode::PageUp) => {
-            app.page_up(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-            app.half_page_down(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
-            app.half_page_up(page_size);
         }
 
         // Split window prefix (Ctrl-w)
@@ -136,7 +181,6 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
 
         // Go to pair (gp) or paste
         (KeyModifiers::NONE, KeyCode::Char('p')) => {
-            // Check if previous key was 'g'
             if pending_status.as_deref() == Some("g...") {
                 app.goto_pair();
             } else {
@@ -195,7 +239,6 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent, page_size: usize) {
 
         // Delete line
         (KeyModifiers::NONE, KeyCode::Char('d')) => {
-            // Waiting for second 'd'
             app.set_status("d...");
         }
 
@@ -325,8 +368,8 @@ fn handle_search_mode(app: &mut App, key: KeyEvent) {
             app.enter_normal_mode();
         }
         KeyCode::Backspace => {
-            app.search_pattern.pop();
-            if app.search_pattern.is_empty() {
+            app.search.pattern.pop();
+            if app.search.pattern.is_empty() {
                 app.enter_normal_mode();
             }
         }
@@ -337,7 +380,7 @@ fn handle_search_mode(app: &mut App, key: KeyEvent) {
             app.search_history_next();
         }
         KeyCode::Char(c) => {
-            app.search_pattern.push(c);
+            app.search.pattern.push(c);
         }
         _ => {}
     }
@@ -367,77 +410,44 @@ fn handle_browse_mode(app: &mut App, key: KeyEvent) {
     }
 
     // Pass other events to the file explorer
+    // Note: Errors here are typically directory access issues that the explorer handles internally
     if let Some(ref mut explorer) = app.file_explorer {
         let event = Event::Key(key);
-        let _ = explorer.handle(&event);
+        if explorer.handle(&event).is_err() {
+            // Explorer handles its own error display; we just continue
+        }
     }
 }
 
 /// Handle keys in visual selection mode.
 fn handle_visual_mode(app: &mut App, key: KeyEvent, page_size: usize) {
+    // Handle '0' for line start (visual mode doesn't have count buffer)
+    if matches!(
+        (key.modifiers, key.code),
+        (KeyModifiers::NONE, KeyCode::Char('0'))
+    ) {
+        app.cursor_line_start();
+        return;
+    }
+
+    // Try shared movement keys first (except 'g' which needs two-key handling)
+    if !matches!(
+        (key.modifiers, key.code),
+        (KeyModifiers::NONE, KeyCode::Char('g'))
+    ) && handle_movement_keys(app, key, page_size)
+    {
+        return;
+    }
+
     match (key.modifiers, key.code) {
         // Exit visual mode
-        (KeyModifiers::NONE, KeyCode::Esc) => {
+        (KeyModifiers::NONE, KeyCode::Esc | KeyCode::Char('v')) => {
             app.exit_visual_mode();
         }
 
-        // Movement - extends selection
-        (KeyModifiers::NONE, KeyCode::Char('h') | KeyCode::Left) => {
-            app.cursor_left();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) => {
-            app.cursor_down();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('k') | KeyCode::Up) => {
-            app.cursor_up();
-        }
-        (KeyModifiers::NONE, KeyCode::Char('l') | KeyCode::Right) => {
-            app.cursor_right();
-        }
-
-        // Line movement
-        (KeyModifiers::NONE, KeyCode::Char('0'))
-        | (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('^')) => {
-            app.cursor_line_start();
-        }
-        (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char('$')) => {
-            app.cursor_line_end();
-        }
-        (KeyModifiers::NONE, KeyCode::Home) => {
-            app.cursor_line_start();
-        }
-        (KeyModifiers::NONE, KeyCode::End) => {
-            app.cursor_line_end();
-        }
-
-        // Document movement
+        // Document movement (g starts two-key sequence for gg)
         (KeyModifiers::NONE, KeyCode::Char('g')) => {
             app.set_status("g...");
-        }
-        (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
-            app.cursor_last_sequence();
-        }
-
-        // Page movement
-        (KeyModifiers::CONTROL, KeyCode::Char('f')) | (KeyModifiers::NONE, KeyCode::PageDown) => {
-            app.page_down(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('b')) | (KeyModifiers::NONE, KeyCode::PageUp) => {
-            app.page_up(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
-            app.half_page_down(page_size);
-        }
-        (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
-            app.half_page_up(page_size);
-        }
-
-        // Word-like movement (jump by 10 columns)
-        (KeyModifiers::NONE, KeyCode::Char('w')) => {
-            app.scroll_right(10);
-        }
-        (KeyModifiers::NONE, KeyCode::Char('b')) => {
-            app.scroll_left(10);
         }
 
         // Yank (copy) selection
@@ -448,11 +458,6 @@ fn handle_visual_mode(app: &mut App, key: KeyEvent, page_size: usize) {
         // Delete selection
         (KeyModifiers::NONE, KeyCode::Char('d' | 'x')) => {
             app.delete_selection();
-        }
-
-        // Re-enter visual mode (resets anchor)
-        (KeyModifiers::NONE, KeyCode::Char('v')) => {
-            app.exit_visual_mode();
         }
 
         _ => {}

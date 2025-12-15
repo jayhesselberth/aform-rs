@@ -3,13 +3,78 @@
 use std::path::{Path, PathBuf};
 
 use ratatui_explorer::FileExplorer;
+use strum::AsRefStr;
 
 use crate::editor::History;
+use crate::history::InputHistory;
 use crate::stockholm::{Alignment, SequenceType};
 use crate::structure::StructureCache;
 
+/// Search state for pattern matching in sequences.
+#[derive(Debug, Clone, Default)]
+pub struct SearchState {
+    /// Current search pattern.
+    pub pattern: String,
+    /// All match positions (row, start_col, end_col) - end_col is exclusive.
+    pub matches: Vec<(usize, usize, usize)>,
+    /// Current match index in matches.
+    pub match_index: Option<usize>,
+    /// Search history.
+    pub history: InputHistory,
+}
+
+impl SearchState {
+    /// Create a new empty search state.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Clear search results and pattern.
+    pub fn clear(&mut self) {
+        self.pattern.clear();
+        self.matches.clear();
+        self.match_index = None;
+    }
+
+    /// Check if there's an active search with results.
+    pub fn has_matches(&self) -> bool {
+        !self.matches.is_empty() && !self.pattern.is_empty()
+    }
+
+    /// Navigate to previous history entry.
+    pub fn history_prev(&mut self) {
+        if let Some(entry) = self.history.prev(&self.pattern) {
+            self.pattern = entry.to_string();
+        }
+    }
+
+    /// Navigate to next history entry.
+    pub fn history_next(&mut self) {
+        if let Some(entry) = self.history.next() {
+            self.pattern = entry.to_string();
+        }
+    }
+
+    /// Check if a position is part of a search match.
+    /// Returns Some(true) if it's the current match, Some(false) if it's another match, None if not a match.
+    pub fn is_match(&self, row: usize, col: usize) -> Option<bool> {
+        if !self.has_matches() {
+            return None;
+        }
+
+        for (idx, &(match_row, start_col, end_col)) in self.matches.iter().enumerate() {
+            if row == match_row && col >= start_col && col < end_col {
+                return Some(self.match_index == Some(idx));
+            }
+        }
+
+        None
+    }
+}
+
 /// Editor mode (vim-style).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, AsRefStr)]
+#[strum(serialize_all = "UPPERCASE")]
 pub enum Mode {
     #[default]
     Normal,
@@ -22,21 +87,9 @@ pub enum Mode {
     Visual,
 }
 
-impl Mode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Mode::Normal => "NORMAL",
-            Mode::Insert => "INSERT",
-            Mode::Command => "COMMAND",
-            Mode::Search => "SEARCH",
-            Mode::Browse => "BROWSE",
-            Mode::Visual => "VISUAL",
-        }
-    }
-}
-
 /// Color scheme for the alignment display.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, AsRefStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum ColorScheme {
     #[default]
     None,
@@ -51,16 +104,6 @@ pub enum ColorScheme {
 }
 
 impl ColorScheme {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ColorScheme::None => "none",
-            ColorScheme::Structure => "structure",
-            ColorScheme::Base => "base",
-            ColorScheme::Conservation => "conservation",
-            ColorScheme::Compensatory => "compensatory",
-        }
-    }
-
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "none" | "off" => Some(ColorScheme::None),
@@ -150,17 +193,9 @@ pub struct App {
     /// Current editor mode.
     pub(crate) mode: Mode,
     /// Command history.
-    pub(crate) command_history: Vec<String>,
-    /// Current position in command history (None = new command).
-    pub(crate) command_history_index: Option<usize>,
-    /// Saved command buffer when browsing history.
-    pub(crate) command_history_saved: String,
-    /// Search history.
-    pub(crate) search_history: Vec<String>,
-    /// Current position in search history (None = new search).
-    pub(crate) search_history_index: Option<usize>,
-    /// Saved search pattern when browsing history.
-    pub(crate) search_history_saved: String,
+    pub(crate) command_history: InputHistory,
+    /// Search state (pattern, matches, history).
+    pub(crate) search: SearchState,
     /// Status message.
     pub(crate) status_message: Option<String>,
     /// Undo/redo history.
@@ -171,14 +206,6 @@ pub struct App {
     pub(crate) secondary_viewport_row: usize,
     /// Secondary pane viewport column.
     pub(crate) secondary_viewport_col: usize,
-
-    // === Search state ===
-    /// Current search pattern.
-    pub(crate) search_pattern: String,
-    /// All match positions (row, start_col, end_col) - end_col is exclusive.
-    pub(crate) search_matches: Vec<(usize, usize, usize)>,
-    /// Current match index in search_matches.
-    pub(crate) search_match_index: Option<usize>,
 
     // === File browser state ===
     /// File explorer for browsing files.
@@ -236,12 +263,8 @@ impl Default for App {
             viewport_col: 0,
             mode: Mode::Normal,
             command_buffer: String::new(),
-            command_history: Vec::new(),
-            command_history_index: None,
-            command_history_saved: String::new(),
-            search_history: Vec::new(),
-            search_history_index: None,
-            search_history_saved: String::new(),
+            command_history: InputHistory::new(),
+            search: SearchState::new(),
             status_message: None,
             gap_char: '.',
             gap_chars: vec!['.', '-', '_', '~', ':'],
@@ -258,9 +281,6 @@ impl Default for App {
             active_pane: ActivePane::Primary,
             secondary_viewport_row: 0,
             secondary_viewport_col: 0,
-            search_pattern: String::new(),
-            search_matches: Vec::new(),
-            search_match_index: None,
             file_explorer: None,
             selection_anchor: None,
             clipboard: None,
@@ -286,62 +306,6 @@ impl App {
         Self::default()
     }
 
-    // === Getters for internal state (public API for external crates) ===
-
-    /// Get whether the alignment has been modified.
-    #[allow(dead_code)] // Public API
-    pub fn modified(&self) -> bool {
-        self.modified
-    }
-
-    /// Get current cursor row.
-    #[allow(dead_code)] // Public API
-    pub fn cursor_row(&self) -> usize {
-        self.cursor_row
-    }
-
-    /// Get current cursor column.
-    #[allow(dead_code)] // Public API
-    pub fn cursor_col(&self) -> usize {
-        self.cursor_col
-    }
-
-    /// Get viewport row offset.
-    #[allow(dead_code)] // Public API
-    pub fn viewport_row(&self) -> usize {
-        self.viewport_row
-    }
-
-    /// Get viewport column offset.
-    #[allow(dead_code)] // Public API
-    pub fn viewport_col(&self) -> usize {
-        self.viewport_col
-    }
-
-    /// Get current editor mode.
-    #[allow(dead_code)] // Public API
-    pub fn mode(&self) -> Mode {
-        self.mode
-    }
-
-    /// Get current status message.
-    #[allow(dead_code)] // Public API
-    pub fn status_message(&self) -> Option<&str> {
-        self.status_message.as_deref()
-    }
-
-    /// Get secondary viewport row offset.
-    #[allow(dead_code)] // Public API
-    pub fn secondary_viewport_row(&self) -> usize {
-        self.secondary_viewport_row
-    }
-
-    /// Get secondary viewport column offset.
-    #[allow(dead_code)] // Public API
-    pub fn secondary_viewport_col(&self) -> usize {
-        self.secondary_viewport_col
-    }
-
     /// Load an alignment from a file.
     pub fn load_file(&mut self, path: &Path) -> Result<(), String> {
         let alignment = crate::stockholm::parser::parse_file(path)
@@ -360,9 +324,11 @@ impl App {
         self.collapse_identical = false;
         self.collapse_groups.clear();
 
-        // Update structure cache
-        if let Some(ss) = self.alignment.ss_cons() {
-            let _ = self.structure_cache.update(ss);
+        // Update structure cache (warn on parse errors)
+        if let Some(ss) = self.alignment.ss_cons()
+            && let Err(e) = self.structure_cache.update(ss)
+        {
+            eprintln!("Warning: Failed to parse SS_cons structure: {e}");
         }
 
         // Detect sequence type and precompute collapse groups
@@ -554,8 +520,7 @@ impl App {
     pub fn enter_command_mode(&mut self) {
         self.mode = Mode::Command;
         self.command_buffer.clear();
-        self.command_history_index = None;
-        self.command_history_saved.clear();
+        self.command_history.reset_navigation();
     }
 
     /// Return to normal mode.
@@ -567,7 +532,7 @@ impl App {
     /// Enter search mode.
     pub fn enter_search_mode(&mut self) {
         self.mode = Mode::Search;
-        self.search_pattern.clear();
+        self.search.pattern.clear();
     }
 
     /// Enter file browser mode.
@@ -720,48 +685,44 @@ impl App {
 
     /// Clear search highlighting.
     pub fn clear_search(&mut self) {
-        self.search_pattern.clear();
-        self.search_matches.clear();
-        self.search_match_index = None;
+        self.search.clear();
     }
 
     /// Execute the current search pattern.
     pub fn execute_search(&mut self) {
-        if self.search_pattern.is_empty() {
+        if self.search.pattern.is_empty() {
             self.enter_normal_mode();
             return;
         }
 
-        // Add to history (avoid consecutive duplicates)
-        if self.search_history.last() != Some(&self.search_pattern) {
-            self.search_history.push(self.search_pattern.clone());
-        }
-        self.search_history_index = None;
+        // Add to history (InputHistory handles deduplication)
+        self.search.history.push(self.search.pattern.clone());
 
-        self.search_matches = self.find_matches(&self.search_pattern.clone());
+        self.search.matches = self.find_matches(&self.search.pattern.clone());
 
-        if self.search_matches.is_empty() {
+        if self.search.matches.is_empty() {
             self.set_status("Pattern not found (ignoring gaps)");
-            self.search_match_index = None;
+            self.search.match_index = None;
         } else {
             // Find first match at or after cursor position
             let first_match_idx = self
-                .search_matches
+                .search
+                .matches
                 .iter()
                 .position(|&(row, start_col, _)| {
                     (row, start_col) >= (self.cursor_row, self.cursor_col)
                 })
                 .unwrap_or(0);
 
-            self.search_match_index = Some(first_match_idx);
+            self.search.match_index = Some(first_match_idx);
             self.jump_to_current_match();
         }
     }
 
     /// Jump to the next search match relative to current cursor position.
     pub fn search_next(&mut self) {
-        if self.search_matches.is_empty() {
-            if !self.search_pattern.is_empty() {
+        if self.search.matches.is_empty() {
+            if !self.search.pattern.is_empty() {
                 self.set_status("Pattern not found");
             }
             return;
@@ -770,19 +731,20 @@ impl App {
         // Find first match strictly after current cursor position
         let cursor_pos = (self.cursor_row, self.cursor_col);
         let next_idx = self
-            .search_matches
+            .search
+            .matches
             .iter()
             .position(|&(row, start_col, _)| (row, start_col) > cursor_pos)
             .unwrap_or(0); // Wrap to first match if none after cursor
 
-        self.search_match_index = Some(next_idx);
+        self.search.match_index = Some(next_idx);
         self.jump_to_current_match();
     }
 
     /// Jump to the previous search match relative to current cursor position.
     pub fn search_prev(&mut self) {
-        if self.search_matches.is_empty() {
-            if !self.search_pattern.is_empty() {
+        if self.search.matches.is_empty() {
+            if !self.search.pattern.is_empty() {
                 self.set_status("Pattern not found");
             }
             return;
@@ -791,12 +753,13 @@ impl App {
         // Find last match strictly before current cursor position
         let cursor_pos = (self.cursor_row, self.cursor_col);
         let prev_idx = self
-            .search_matches
+            .search
+            .matches
             .iter()
             .rposition(|&(row, start_col, _)| (row, start_col) < cursor_pos)
-            .unwrap_or(self.search_matches.len() - 1); // Wrap to last match if none before cursor
+            .unwrap_or(self.search.matches.len() - 1); // Wrap to last match if none before cursor
 
-        self.search_match_index = Some(prev_idx);
+        self.search.match_index = Some(prev_idx);
         self.jump_to_current_match();
     }
 
@@ -878,32 +841,20 @@ impl App {
     /// Check if a position is part of a search match.
     /// Returns Some(true) if it's the current match, Some(false) if it's another match, None if not a match.
     pub fn is_search_match(&self, row: usize, col: usize) -> Option<bool> {
-        if self.search_matches.is_empty() || self.search_pattern.is_empty() {
-            return None;
-        }
-
-        let current_idx = self.search_match_index;
-
-        for (idx, &(match_row, start_col, end_col)) in self.search_matches.iter().enumerate() {
-            if row == match_row && col >= start_col && col < end_col {
-                return Some(current_idx == Some(idx));
-            }
-        }
-
-        None
+        self.search.is_match(row, col)
     }
 
     /// Jump to the current match and update status.
     fn jump_to_current_match(&mut self) {
-        if let Some(idx) = self.search_match_index
-            && let Some(&(row, start_col, _end_col)) = self.search_matches.get(idx)
+        if let Some(idx) = self.search.match_index
+            && let Some(&(row, start_col, _end_col)) = self.search.matches.get(idx)
         {
             self.cursor_row = row;
             self.cursor_col = start_col;
             self.set_status(format!(
                 "Match {}/{} (ignoring gaps)",
                 idx + 1,
-                self.search_matches.len()
+                self.search.matches.len()
             ));
         }
     }
@@ -912,47 +863,71 @@ impl App {
     pub fn execute_command(&mut self) {
         let command = self.command_buffer.trim().to_string();
         self.command_buffer.clear();
-        self.command_history_index = None;
         self.mode = Mode::Normal;
 
         if command.is_empty() {
             return;
         }
 
-        // Add to history (avoid consecutive duplicates)
-        if self.command_history.last() != Some(&command) {
-            self.command_history.push(command.clone());
-        }
+        // Add to history (InputHistory handles deduplication)
+        self.command_history.push(command.clone());
 
         let parts: Vec<&str> = command.split_whitespace().collect();
-        match parts.as_slice() {
+
+        // Try each command category in order
+        if self.execute_file_command(&parts, &command) {
+            return;
+        }
+        if self.execute_display_command(&parts) {
+            return;
+        }
+        if self.execute_transform_command(&parts) {
+            return;
+        }
+        if self.execute_clustering_command(&parts) {
+            return;
+        }
+
+        // Fallback: check for line number or unknown command
+        if let Ok(line_num) = command.parse::<usize>() {
+            self.goto_row(line_num);
+        } else {
+            self.set_status(format!("Unknown command: {command}"));
+        }
+    }
+
+    /// Execute file-related commands (quit, write, edit). Returns true if handled.
+    fn execute_file_command(&mut self, parts: &[&str], command: &str) -> bool {
+        match parts {
             ["q" | "quit"] => {
                 if self.split_mode.is_some() {
-                    // In split mode, :q closes the current pane
                     self.close_split();
                 } else if self.modified {
                     self.set_status("No write since last change (use :q! to force)");
                 } else {
                     self.should_quit = true;
                 }
+                true
             }
             ["q!"] => {
                 if self.split_mode.is_some() {
-                    // In split mode, :q! closes the current pane (no save check needed)
                     self.close_split();
                 } else {
                     self.should_quit = true;
                 }
+                true
             }
             ["w" | "write"] => {
                 if let Err(e) = self.save_file() {
                     self.set_status(e);
                 }
+                true
             }
             ["w", path] => {
-                if let Err(e) = self.save_file_as(PathBuf::from(path)) {
+                if let Err(e) = self.save_file_as(PathBuf::from(*path)) {
                     self.set_status(e);
                 }
+                true
             }
             ["wq"] => {
                 if let Err(e) = self.save_file() {
@@ -960,48 +935,36 @@ impl App {
                 } else {
                     self.should_quit = true;
                 }
+                true
             }
             ["e" | "edit"] => {
-                // Open file browser
                 self.enter_browse_mode();
+                true
             }
             ["e" | "edit", path] => {
-                // Open specific file
                 if let Err(e) = self.load_file(Path::new(path)) {
                     self.set_status(e);
                 }
+                true
             }
-            ["color", scheme] => {
-                if let Some(s) = ColorScheme::from_str(scheme) {
-                    self.color_scheme = s;
-                    self.set_status(format!("Color scheme: {}", s.as_str()));
-                } else {
-                    self.set_status(format!("Unknown color scheme: {scheme}"));
-                }
+            ["noh" | "nohlsearch"] => {
+                self.clear_search();
+                true
             }
-            ["set", setting] => {
-                if let Some((key, value)) = setting.split_once('=') {
-                    match key {
-                        "gap" => {
-                            if let Some(c) = value.chars().next() {
-                                self.gap_char = c;
-                                self.set_status(format!("Gap character: '{c}'"));
-                            }
-                        }
-                        _ => {
-                            self.set_status(format!("Unknown setting: {key}"));
-                        }
-                    }
-                }
+            _ if command.starts_with('!') => {
+                self.set_status("Shell commands not supported");
+                true
             }
-            ["fold"] => {
-                self.fold_current_sequence();
-            }
-            ["alifold"] => {
-                self.fold_alignment();
-            }
+            _ => false,
+        }
+    }
+
+    /// Execute display-related commands (ruler, rownum, color, etc.). Returns true if handled.
+    fn execute_display_command(&mut self, parts: &[&str]) -> bool {
+        match parts {
             ["?" | "help"] => {
                 self.show_help = true;
+                true
             }
             ["ruler"] => {
                 self.show_ruler = !self.show_ruler;
@@ -1009,6 +972,7 @@ impl App {
                     "Ruler: {}",
                     if self.show_ruler { "on" } else { "off" }
                 ));
+                true
             }
             ["rownum"] => {
                 self.show_row_numbers = !self.show_row_numbers;
@@ -1016,65 +980,7 @@ impl App {
                     "Row numbers: {}",
                     if self.show_row_numbers { "on" } else { "off" }
                 ));
-            }
-            ["split" | "sp"] => {
-                self.horizontal_split();
-            }
-            ["vsplit" | "vs" | "vsp"] => {
-                self.vertical_split();
-            }
-            ["only"] => {
-                self.close_split();
-            }
-            ["upper" | "uppercase"] => {
-                self.uppercase_alignment();
-                self.set_status("Converted to uppercase");
-            }
-            ["lower" | "lowercase"] => {
-                self.lowercase_alignment();
-                self.set_status("Converted to lowercase");
-            }
-            ["t2u"] => {
-                self.convert_t_to_u();
-                self.set_status("Converted T to U");
-            }
-            ["u2t"] => {
-                self.convert_u_to_t();
-                self.set_status("Converted U to T");
-            }
-            ["trimleft"] => {
-                self.trim_left();
-            }
-            ["trimright"] => {
-                self.trim_right();
-            }
-            ["trim"] => {
-                self.trim();
-            }
-            ["noh" | "nohlsearch"] => {
-                self.clear_search();
-            }
-            ["cluster"] => {
-                self.cluster_sequences();
-                self.set_status(format!(
-                    "Clustered {} sequences by similarity",
-                    self.alignment.num_sequences()
-                ));
-            }
-            ["uncluster"] => {
-                self.uncluster();
-                self.set_status("Clustering disabled");
-            }
-            ["tree"] => {
-                self.toggle_tree();
-                if self.show_tree {
-                    self.set_status("Tree visible");
-                } else if self.cluster_tree.is_some() {
-                    self.set_status("Tree hidden");
-                }
-            }
-            ["collapse"] => {
-                self.toggle_collapse_identical();
+                true
             }
             ["consensus"] => {
                 self.show_consensus = !self.show_consensus;
@@ -1082,6 +988,7 @@ impl App {
                     "Consensus bar: {}",
                     if self.show_consensus { "on" } else { "off" }
                 ));
+                true
             }
             ["conservation"] | ["consbar"] => {
                 self.show_conservation_bar = !self.show_conservation_bar;
@@ -1093,42 +1000,167 @@ impl App {
                         "off"
                     }
                 ));
+                true
+            }
+            ["color", scheme] => {
+                if let Some(s) = ColorScheme::from_str(scheme) {
+                    self.color_scheme = s;
+                    self.set_status(format!("Color scheme: {}", s.as_ref()));
+                } else {
+                    self.set_status(format!("Unknown color scheme: {scheme}"));
+                }
+                true
             }
             ["type"] => {
                 self.set_status(format!("Sequence type: {:?}", self.sequence_type));
+                true
             }
-            ["type", t] => match t.to_lowercase().as_str() {
-                "rna" => {
-                    self.sequence_type = SequenceType::RNA;
-                    self.set_status("Sequence type: RNA");
-                }
-                "dna" => {
-                    self.sequence_type = SequenceType::DNA;
-                    self.set_status("Sequence type: DNA");
-                }
-                "protein" | "aa" => {
-                    self.sequence_type = SequenceType::Protein;
-                    self.set_status("Sequence type: Protein");
-                }
-                "auto" => {
-                    self.detect_sequence_type();
-                    self.set_status(format!("Detected sequence type: {:?}", self.sequence_type));
+            ["type", t] => {
+                self.execute_type_command(t);
+                true
+            }
+            ["set", setting] => {
+                self.execute_set_command(setting);
+                true
+            }
+            ["split" | "sp"] => {
+                self.horizontal_split();
+                true
+            }
+            ["vsplit" | "vs" | "vsp"] => {
+                self.vertical_split();
+                true
+            }
+            ["only"] => {
+                self.close_split();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Execute sequence type command.
+    fn execute_type_command(&mut self, t: &str) {
+        match t.to_lowercase().as_str() {
+            "rna" => {
+                self.sequence_type = SequenceType::RNA;
+                self.set_status("Sequence type: RNA");
+            }
+            "dna" => {
+                self.sequence_type = SequenceType::DNA;
+                self.set_status("Sequence type: DNA");
+            }
+            "protein" | "aa" => {
+                self.sequence_type = SequenceType::Protein;
+                self.set_status("Sequence type: Protein");
+            }
+            "auto" => {
+                self.detect_sequence_type();
+                self.set_status(format!("Detected sequence type: {:?}", self.sequence_type));
+            }
+            _ => {
+                self.set_status(format!(
+                    "Unknown sequence type: {} (use rna, dna, protein, or auto)",
+                    t
+                ));
+            }
+        }
+    }
+
+    /// Execute set command (key=value settings).
+    fn execute_set_command(&mut self, setting: &str) {
+        if let Some((key, value)) = setting.split_once('=') {
+            match key {
+                "gap" => {
+                    if let Some(c) = value.chars().next() {
+                        self.gap_char = c;
+                        self.set_status(format!("Gap character: '{c}'"));
+                    }
                 }
                 _ => {
-                    self.set_status(format!(
-                        "Unknown sequence type: {} (use rna, dna, protein, or auto)",
-                        t
-                    ));
-                }
-            },
-            _ => {
-                // Check if command is a line number (e.g., :1, :42)
-                if let Ok(line_num) = command.parse::<usize>() {
-                    self.goto_row(line_num);
-                } else {
-                    self.set_status(format!("Unknown command: {command}"));
+                    self.set_status(format!("Unknown setting: {key}"));
                 }
             }
+        }
+    }
+
+    /// Execute alignment transformation commands. Returns true if handled.
+    fn execute_transform_command(&mut self, parts: &[&str]) -> bool {
+        match parts {
+            ["upper" | "uppercase"] => {
+                self.uppercase_alignment();
+                self.set_status("Converted to uppercase");
+                true
+            }
+            ["lower" | "lowercase"] => {
+                self.lowercase_alignment();
+                self.set_status("Converted to lowercase");
+                true
+            }
+            ["t2u"] => {
+                self.convert_t_to_u();
+                self.set_status("Converted T to U");
+                true
+            }
+            ["u2t"] => {
+                self.convert_u_to_t();
+                self.set_status("Converted U to T");
+                true
+            }
+            ["trimleft"] => {
+                self.trim_left();
+                true
+            }
+            ["trimright"] => {
+                self.trim_right();
+                true
+            }
+            ["trim"] => {
+                self.trim();
+                true
+            }
+            ["fold"] => {
+                self.fold_current_sequence();
+                true
+            }
+            ["alifold"] => {
+                self.fold_alignment();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Execute clustering-related commands. Returns true if handled.
+    fn execute_clustering_command(&mut self, parts: &[&str]) -> bool {
+        match parts {
+            ["cluster"] => {
+                self.cluster_sequences();
+                self.set_status(format!(
+                    "Clustered {} sequences by similarity",
+                    self.alignment.num_sequences()
+                ));
+                true
+            }
+            ["uncluster"] => {
+                self.uncluster();
+                self.set_status("Clustering disabled");
+                true
+            }
+            ["tree"] => {
+                self.toggle_tree();
+                if self.show_tree {
+                    self.set_status("Tree visible");
+                } else if self.cluster_tree.is_some() {
+                    self.set_status("Tree hidden");
+                }
+                true
+            }
+            ["collapse"] => {
+                self.toggle_collapse_identical();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -1182,90 +1214,26 @@ impl App {
 
     /// Navigate to previous command in history (Up arrow).
     pub fn command_history_prev(&mut self) {
-        if self.command_history.is_empty() {
-            return;
-        }
-
-        match self.command_history_index {
-            None => {
-                // Save current input and go to most recent history
-                self.command_history_saved = self.command_buffer.clone();
-                self.command_history_index = Some(self.command_history.len() - 1);
-            }
-            Some(0) => {
-                // Already at oldest, stay there
-                return;
-            }
-            Some(i) => {
-                self.command_history_index = Some(i - 1);
-            }
-        }
-
-        if let Some(i) = self.command_history_index {
-            self.command_buffer = self.command_history[i].clone();
+        if let Some(entry) = self.command_history.prev(&self.command_buffer) {
+            self.command_buffer = entry.to_string();
         }
     }
 
     /// Navigate to next command in history (Down arrow).
     pub fn command_history_next(&mut self) {
-        match self.command_history_index {
-            None => {
-                // Not in history, do nothing
-            }
-            Some(i) if i >= self.command_history.len() - 1 => {
-                // At end of history, restore saved input
-                self.command_history_index = None;
-                self.command_buffer = self.command_history_saved.clone();
-            }
-            Some(i) => {
-                self.command_history_index = Some(i + 1);
-                self.command_buffer = self.command_history[i + 1].clone();
-            }
+        if let Some(entry) = self.command_history.next() {
+            self.command_buffer = entry.to_string();
         }
     }
 
     /// Navigate to previous search in history (Up arrow).
     pub fn search_history_prev(&mut self) {
-        if self.search_history.is_empty() {
-            return;
-        }
-
-        match self.search_history_index {
-            None => {
-                // Save current input and go to most recent history
-                self.search_history_saved = self.search_pattern.clone();
-                self.search_history_index = Some(self.search_history.len() - 1);
-            }
-            Some(0) => {
-                // Already at oldest, stay there
-                return;
-            }
-            Some(i) => {
-                self.search_history_index = Some(i - 1);
-            }
-        }
-
-        if let Some(i) = self.search_history_index {
-            self.search_pattern = self.search_history[i].clone();
-        }
+        self.search.history_prev();
     }
 
     /// Navigate to next search in history (Down arrow).
     pub fn search_history_next(&mut self) {
-        match self.search_history_index {
-            None => {
-                // Not in history, do nothing
-            }
-            Some(i) if i >= self.search_history.len() - 1 => {
-                // At end of history, restore saved input
-                self.search_history_index = None;
-                self.search_pattern = self.search_history_saved.clone();
-            }
-            Some(i) => {
-                self.search_history_index = Some(i + 1);
-                self.search_pattern = self.search_history[i + 1].clone();
-            }
-        }
+        self.search.history_next();
     }
 
     /// Fold current sequence using RNAfold.
@@ -1287,8 +1255,10 @@ impl App {
     pub fn update_structure_cache(&mut self) {
         if let Some(ss) = self.alignment.ss_cons()
             && !self.structure_cache.is_valid_for(ss)
+            && let Err(e) = self.structure_cache.update(ss)
         {
-            let _ = self.structure_cache.update(ss);
+            // Structure parsing failed - show status to user
+            self.set_status(format!("Warning: SS_cons parse error: {e}"));
         }
     }
 
@@ -1403,12 +1373,6 @@ impl App {
         } else {
             self.status_message = Some("No tree available. Run :cluster first.".to_string());
         }
-    }
-
-    /// Check if clustering is currently active.
-    #[allow(dead_code)]
-    pub fn is_clustered(&self) -> bool {
-        self.cluster_order.is_some()
     }
 
     // === Collapse identical sequences ===
