@@ -1,6 +1,7 @@
 //! Sequence clustering using hierarchical agglomerative clustering.
 //!
 //! Uses Hamming distance and UPGMA (average linkage) to group similar sequences.
+//! Identical sequences are collapsed before clustering to reduce O(n²) distance computation.
 
 use kodama::{Method, linkage};
 
@@ -13,6 +14,9 @@ pub struct ClusterResult {
     pub tree_lines: Vec<String>,
     /// Width of the tree in characters.
     pub tree_width: usize,
+    /// Group order when clustering with collapse (maps display_row -> group_index).
+    /// Only populated when clustering collapsed groups.
+    pub group_order: Option<Vec<usize>>,
 }
 
 /// Compute Hamming distance between two sequences (count mismatches).
@@ -69,6 +73,7 @@ pub fn cluster_sequences_with_tree(sequences: &[Vec<char>], gap_chars: &[char]) 
                 vec![]
             },
             tree_width: if n == 1 { 1 } else { 0 },
+            group_order: None,
         };
     }
 
@@ -85,6 +90,72 @@ pub fn cluster_sequences_with_tree(sequences: &[Vec<char>], gap_chars: &[char]) 
         order,
         tree_lines,
         tree_width,
+        group_order: None,
+    }
+}
+
+/// Perform hierarchical clustering using precomputed collapse groups.
+/// This clusters only representative sequences, then expands the result.
+/// Much faster when there are many identical sequences.
+pub fn cluster_sequences_with_collapse(
+    sequences: &[Vec<char>],
+    gap_chars: &[char],
+    collapse_groups: &[(usize, Vec<usize>)],
+) -> ClusterResult {
+    let n = sequences.len();
+    let num_unique = collapse_groups.len();
+
+    // If no duplicates or trivial case, use standard clustering
+    if num_unique == n || n <= 1 {
+        return cluster_sequences_with_tree(sequences, gap_chars);
+    }
+
+    // Edge case: only one unique sequence (all identical)
+    if num_unique == 1 {
+        return ClusterResult {
+            order: collapse_groups[0].1.clone(),
+            tree_lines: vec!["─".to_string(); n],
+            tree_width: 1,
+            group_order: Some(vec![0]), // Only one group at position 0
+        };
+    }
+
+    // Extract representative sequences
+    let rep_indices: Vec<usize> = collapse_groups.iter().map(|(rep, _)| *rep).collect();
+    let rep_sequences: Vec<Vec<char>> = rep_indices
+        .iter()
+        .map(|&idx| sequences[idx].clone())
+        .collect();
+
+    // Cluster only the representatives
+    let mut distances = compute_distance_matrix(&rep_sequences, gap_chars);
+    let dendrogram = linkage(&mut distances, num_unique, Method::Average);
+
+    // Get order of representatives
+    let rep_order = dendrogram_order(&dendrogram, num_unique);
+
+    // Build tree for representatives
+    let (rep_tree_lines, tree_width) = build_tree_chars(&dendrogram, num_unique, &rep_order);
+
+    // Expand order: for each representative in order, include all its members
+    let mut order = Vec::with_capacity(n);
+    let mut tree_lines = Vec::with_capacity(n);
+
+    for &rep_idx in &rep_order {
+        let (_, members) = &collapse_groups[rep_idx];
+        let tree_line = &rep_tree_lines[rep_order.iter().position(|&x| x == rep_idx).unwrap()];
+
+        for &member in members {
+            order.push(member);
+            tree_lines.push(tree_line.clone());
+        }
+    }
+
+    ClusterResult {
+        order,
+        tree_lines,
+        tree_width,
+        group_order: Some(rep_order),
     }
 }
 
@@ -188,6 +259,10 @@ fn build_tree_chars(
     // Find max depth (tree width in columns)
     let max_depth = node_info.iter().map(|n| n.depth).max().unwrap_or(0);
 
+    // Cap tree width to avoid very wide trees
+    const MAX_TREE_WIDTH: usize = 8;
+    let tree_width = max_depth.min(MAX_TREE_WIDTH);
+
     // For each internal node, we need to track which column it occupies.
     // Use depth-based column: depth 1 nodes at column 0, depth 2 at column 1, etc.
     // But multiple nodes can have the same depth, so we assign unique columns.
@@ -198,13 +273,23 @@ fn build_tree_chars(
     internal_nodes.sort_by_key(|(_, info)| (info.depth, info.row_min));
 
     // Assign columns based on depth
+    // Use sqrt scaling when tree is deep - this gives more visual space to
+    // shallow/early branching points which are more informative
     let mut node_columns = vec![0usize; 2 * n - 1];
     for (node_id, info) in &internal_nodes {
-        node_columns[*node_id] = info.depth - 1; // depth 1 -> column 0
+        let col = if max_depth <= MAX_TREE_WIDTH {
+            // No scaling needed
+            info.depth - 1
+        } else {
+            // Use sqrt scaling: sqrt(normalized_depth) * (tree_width - 1)
+            // This spreads out shallow branching more than linear scaling
+            let normalized = (info.depth - 1) as f64 / (max_depth - 1).max(1) as f64;
+            (normalized.sqrt() * (tree_width - 1) as f64) as usize
+        };
+        node_columns[*node_id] = col.min(tree_width - 1);
     }
 
     // Build tree lines for each row
-    let tree_width = max_depth;
     let mut tree_lines = Vec::with_capacity(n);
 
     for row in 0..n {
@@ -374,5 +459,64 @@ mod tests {
 
         assert_eq!(result.tree_lines.len(), 1);
         assert_eq!(result.tree_lines[0], "─");
+    }
+
+    #[test]
+    fn test_cluster_with_collapse_groups() {
+        // Test clustering with precomputed collapse groups
+        // Sequences: A, A, B, A, C (indices 0-4, where 0,1,3 are identical "A")
+        let sequences: Vec<Vec<char>> = vec![
+            "AAAA".chars().collect(), // 0 - A
+            "AAAA".chars().collect(), // 1 - A (duplicate)
+            "CCCC".chars().collect(), // 2 - B
+            "AAAA".chars().collect(), // 3 - A (duplicate)
+            "UUUU".chars().collect(), // 4 - C
+        ];
+        let gaps = vec!['-', '.'];
+
+        // Collapse groups: (representative, all_members)
+        let collapse_groups = vec![
+            (0, vec![0, 1, 3]), // A appears 3 times
+            (2, vec![2]),       // B appears once
+            (4, vec![4]),       // C appears once
+        ];
+
+        let result = cluster_sequences_with_collapse(&sequences, &gaps, &collapse_groups);
+
+        // Should have all 5 sequences in order
+        assert_eq!(result.order.len(), 5);
+        assert_eq!(result.tree_lines.len(), 5);
+
+        // All A sequences (0, 1, 3) should be adjacent
+        let pos0 = result.order.iter().position(|&x| x == 0).unwrap();
+        let pos1 = result.order.iter().position(|&x| x == 1).unwrap();
+        let pos3 = result.order.iter().position(|&x| x == 3).unwrap();
+
+        // Check they're consecutive
+        let a_positions = vec![pos0, pos1, pos3];
+        let min_pos = *a_positions.iter().min().unwrap();
+        let max_pos = *a_positions.iter().max().unwrap();
+        assert_eq!(
+            max_pos - min_pos,
+            2,
+            "All A sequences should be consecutive"
+        );
+    }
+
+    #[test]
+    fn test_cluster_with_collapse_all_identical() {
+        // Edge case: all sequences identical
+        let sequences: Vec<Vec<char>> = vec![
+            "AAAA".chars().collect(),
+            "AAAA".chars().collect(),
+            "AAAA".chars().collect(),
+        ];
+        let gaps = vec!['-', '.'];
+        let collapse_groups = vec![(0, vec![0, 1, 2])];
+
+        let result = cluster_sequences_with_collapse(&sequences, &gaps, &collapse_groups);
+
+        assert_eq!(result.order.len(), 3);
+        assert_eq!(result.tree_lines.len(), 3);
     }
 }

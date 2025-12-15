@@ -21,6 +21,17 @@ pub enum SequenceType {
     Protein,
 }
 
+impl SequenceType {
+    /// Return a display string for the sequence type.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SequenceType::RNA => "RNA",
+            SequenceType::DNA => "DNA",
+            SequenceType::Protein => "Protein",
+        }
+    }
+}
+
 /// A Stockholm format alignment.
 ///
 /// Sequences are wrapped in Rc for efficient copy-on-write cloning during undo/redo.

@@ -194,6 +194,8 @@ pub struct App {
     pub(crate) tree_width: usize,
     /// Whether to show the dendrogram tree visualization.
     pub(crate) show_tree: bool,
+    /// Group order when clustering with collapse (maps display_row -> group_index).
+    pub(crate) cluster_group_order: Option<Vec<usize>>,
     /// Terminal color theme (detected at startup).
     pub terminal_theme: TerminalTheme,
 
@@ -257,6 +259,7 @@ impl Default for App {
             cluster_tree: None,
             tree_width: 0,
             show_tree: false,
+            cluster_group_order: None,
             terminal_theme: TerminalTheme::Dark,
             collapse_identical: false,
             collapse_groups: Vec::new(),
@@ -418,7 +421,7 @@ impl App {
 
     /// Move cursor down.
     pub fn cursor_down(&mut self) {
-        if self.cursor_row < self.alignment.num_sequences().saturating_sub(1) {
+        if self.cursor_row < self.visible_sequence_count().saturating_sub(1) {
             self.cursor_row += 1;
         }
     }
@@ -454,7 +457,7 @@ impl App {
 
     /// Move cursor to last sequence.
     pub fn cursor_last_sequence(&mut self) {
-        self.cursor_row = self.alignment.num_sequences().saturating_sub(1);
+        self.cursor_row = self.visible_sequence_count().saturating_sub(1);
     }
 
     /// Jump to paired base.
@@ -474,7 +477,7 @@ impl App {
 
     /// Jump to a specific row (1-indexed, like vim :N).
     pub fn goto_row(&mut self, row: usize) {
-        let max_row = self.alignment.num_sequences().saturating_sub(1);
+        let max_row = self.visible_sequence_count().saturating_sub(1);
         // Convert from 1-indexed to 0-indexed, clamping to valid range
         let target = row.saturating_sub(1).min(max_row);
         self.cursor_row = target;
@@ -503,7 +506,7 @@ impl App {
 
     /// Page down.
     pub fn page_down(&mut self, page_size: usize) {
-        let max_row = self.alignment.num_sequences().saturating_sub(1);
+        let max_row = self.visible_sequence_count().saturating_sub(1);
         self.cursor_row = (self.cursor_row + page_size).min(max_row);
     }
 
@@ -1232,7 +1235,7 @@ impl App {
 
     /// Ensure cursor is within bounds.
     pub fn clamp_cursor(&mut self) {
-        let max_row = self.alignment.num_sequences().saturating_sub(1);
+        let max_row = self.visible_sequence_count().saturating_sub(1);
         let max_col = self.alignment.width().saturating_sub(1);
         self.cursor_row = self.cursor_row.min(max_row);
         self.cursor_col = self.cursor_col.min(max_col);
@@ -1260,18 +1263,26 @@ impl App {
     /// Map display row to actual sequence index.
     /// When collapse is active, maps to representative. When clustering is active, uses cluster order.
     pub fn display_to_actual_row(&self, display_row: usize) -> usize {
-        // First apply collapse mapping (if enabled)
-        let row = if self.collapse_identical && display_row < self.collapse_groups.len() {
-            self.collapse_groups[display_row].0
-        } else {
-            display_row
-        };
+        if self.collapse_identical && !self.collapse_groups.is_empty() {
+            // When clustering is also enabled, use group_order to find correct group
+            let group_idx = if let Some(ref group_order) = self.cluster_group_order {
+                group_order.get(display_row).copied().unwrap_or(display_row)
+            } else {
+                display_row
+            };
 
-        // Then apply cluster mapping (if enabled)
-        if let Some(ref order) = self.cluster_order {
-            order.get(row).copied().unwrap_or(row)
+            // Get representative from the group
+            if group_idx < self.collapse_groups.len() {
+                self.collapse_groups[group_idx].0
+            } else {
+                display_row
+            }
+        } else if let Some(ref order) = self.cluster_order {
+            // Only clustering, no collapse
+            order.get(display_row).copied().unwrap_or(display_row)
         } else {
-            row
+            // No collapse, no clustering
+            display_row
         }
     }
 
@@ -1285,6 +1296,7 @@ impl App {
     }
 
     /// Cluster sequences by similarity using hierarchical clustering.
+    /// Uses precomputed collapse groups to avoid redundant distance calculations.
     pub fn cluster_sequences(&mut self) {
         if self.alignment.sequences.is_empty() {
             return;
@@ -1299,10 +1311,16 @@ impl App {
             .collect();
 
         // Compute cluster order and tree using UPGMA
-        let result = crate::clustering::cluster_sequences_with_tree(&seq_chars, &self.gap_chars);
+        // Use collapse groups to cluster only unique sequences (optimization)
+        let result = crate::clustering::cluster_sequences_with_collapse(
+            &seq_chars,
+            &self.gap_chars,
+            &self.collapse_groups,
+        );
         self.cluster_order = Some(result.order);
         self.cluster_tree = Some(result.tree_lines);
         self.tree_width = result.tree_width;
+        self.cluster_group_order = result.group_order;
 
         // Clamp cursor to valid range
         if self.cursor_row >= self.visible_sequence_count() {
@@ -1316,6 +1334,7 @@ impl App {
         self.cluster_tree = None;
         self.tree_width = 0;
         self.show_tree = false;
+        self.cluster_group_order = None;
     }
 
     /// Toggle dendrogram tree visibility.
@@ -1364,8 +1383,19 @@ impl App {
 
     /// Get collapse count for a display row (1 if not collapsed or unique).
     pub fn get_collapse_count(&self, display_row: usize) -> usize {
-        if self.collapse_identical && display_row < self.collapse_groups.len() {
-            self.collapse_groups[display_row].1.len()
+        if self.collapse_identical && !self.collapse_groups.is_empty() {
+            // When clustering is also enabled, use group_order to find correct group
+            let group_idx = if let Some(ref group_order) = self.cluster_group_order {
+                group_order.get(display_row).copied().unwrap_or(display_row)
+            } else {
+                display_row
+            };
+
+            if group_idx < self.collapse_groups.len() {
+                self.collapse_groups[group_idx].1.len()
+            } else {
+                1
+            }
         } else {
             1
         }

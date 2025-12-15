@@ -189,9 +189,23 @@ pub fn parse_str(s: &str) -> Result<Alignment, ParseError> {
 }
 
 /// Parse a Stockholm alignment from a file path.
+/// Automatically handles gzip-compressed files (.gz extension).
 pub fn parse_file(path: &std::path::Path) -> Result<Alignment, ParseError> {
+    use flate2::read::GzDecoder;
+
     let file = std::fs::File::open(path)?;
-    parse(file)
+
+    // Check if file is gzip-compressed by extension
+    let is_gzip = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));
+
+    if is_gzip {
+        let decoder = GzDecoder::new(file);
+        parse(decoder)
+    } else {
+        parse(file)
+    }
 }
 
 #[cfg(test)]

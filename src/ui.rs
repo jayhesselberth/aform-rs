@@ -116,10 +116,24 @@ struct IdFormatter {
     row_width: usize,
     id_width: usize,
     show_row_numbers: bool,
+    collapse_width: usize,
 }
 
 impl IdFormatter {
-    fn new(num_sequences: usize, max_id_len: usize, show_row_numbers: bool) -> Self {
+    fn new(
+        num_sequences: usize,
+        max_id_len: usize,
+        show_row_numbers: bool,
+        max_collapse_count: usize,
+    ) -> Self {
+        // Width for collapse count suffix: " (N)" where N is the max count
+        let collapse_width = if max_collapse_count > 1 {
+            // " (" + digits + ")"
+            3 + max_collapse_count.to_string().len()
+        } else {
+            0
+        };
+
         Self {
             row_width: if show_row_numbers {
                 num_sequences.max(1).to_string().len()
@@ -128,18 +142,20 @@ impl IdFormatter {
             },
             id_width: max_id_len,
             show_row_numbers,
+            collapse_width,
         }
     }
 
     /// Total width of the formatted ID column.
     fn width(&self) -> usize {
-        if self.show_row_numbers {
+        let base = if self.show_row_numbers {
             // Format: "row_num id " with spaces
             self.row_width + 1 + self.id_width + 1
         } else {
             // Format: "id " with trailing space
             self.id_width + 1
-        }
+        };
+        base + self.collapse_width
     }
 
     /// Format a row number and ID.
@@ -207,7 +223,8 @@ fn render_alignment_pane(
     // Calculate widths using a formatter helper
     let num_seqs = app.alignment.num_sequences();
     let max_id_len = app.alignment.max_id_len().max(10);
-    let id_formatter = IdFormatter::new(num_seqs, max_id_len, app.show_row_numbers);
+    let max_collapse = app.max_collapse_count();
+    let id_formatter = IdFormatter::new(num_seqs, max_id_len, app.show_row_numbers, max_collapse);
     let id_width = id_formatter.width();
 
     // Account for tree width if showing (separator + tree column)
@@ -873,12 +890,24 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     // Position info
     let pos_info = format!(" {}:{} ", app.cursor_row + 1, app.cursor_col + 1);
 
-    // Alignment info
-    let align_info = format!(
-        " {}x{} ",
-        app.alignment.num_sequences(),
-        app.alignment.width()
-    );
+    // Alignment info (show collapsed count if enabled)
+    let align_info = if app.collapse_identical && !app.collapse_groups.is_empty() {
+        format!(
+            " [{}→{}]x{} ",
+            app.alignment.num_sequences(),
+            app.collapse_groups.len(),
+            app.alignment.width()
+        )
+    } else {
+        format!(
+            " {}x{} ",
+            app.alignment.num_sequences(),
+            app.alignment.width()
+        )
+    };
+
+    // Sequence type
+    let type_info = format!(" {} ", app.sequence_type.as_str());
 
     // Color scheme
     let color_info = if app.color_scheme != ColorScheme::None {
@@ -914,6 +943,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         mode_span,
         Span::raw(pos_info),
         Span::styled(align_info, Style::default().fg(Color::Cyan)),
+        Span::styled(type_info, Style::default().fg(Color::Green)),
         Span::styled(color_info, Style::default().fg(Color::Magenta)),
         Span::styled(structure_info, Style::default().fg(Color::Yellow)),
         Span::styled(selection_info, Style::default().fg(Color::LightBlue)),
@@ -971,8 +1001,12 @@ pub fn visible_dimensions(
     tree_display_width: usize,
     alignment_width: usize,
 ) -> (usize, usize) {
-    let _ = max_collapse_count; // Reserved for future ID column width adjustment
-    let id_formatter = IdFormatter::new(num_sequences, max_id_len.max(10), show_row_numbers);
+    let id_formatter = IdFormatter::new(
+        num_sequences,
+        max_id_len.max(10),
+        show_row_numbers,
+        max_collapse_count,
+    );
     let ruler_height = if show_ruler { RULER_HEIGHT } else { 0 };
     let ss_cons_height: u16 = if has_ss_cons { 1 } else { 0 };
     let consensus_height: u16 = if show_consensus { 1 } else { 0 };
