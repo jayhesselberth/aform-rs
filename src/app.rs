@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use ratatui::widgets::ScrollbarState;
 use ratatui_explorer::FileExplorer;
 
 use crate::editor::History;
@@ -173,6 +174,12 @@ pub struct App {
     pub(crate) selection_anchor: Option<(usize, usize)>,
     /// Clipboard for yanked block (rectangular selection).
     pub(crate) clipboard: Option<Vec<Vec<char>>>,
+
+    // === Scrollbar state ===
+    /// Vertical scrollbar state (kept in sync with viewport).
+    pub(crate) v_scrollbar_state: ScrollbarState,
+    /// Horizontal scrollbar state (kept in sync with viewport).
+    pub(crate) h_scrollbar_state: ScrollbarState,
 }
 
 impl Default for App {
@@ -212,6 +219,8 @@ impl Default for App {
             file_explorer: None,
             selection_anchor: None,
             clipboard: None,
+            v_scrollbar_state: ScrollbarState::default(),
+            h_scrollbar_state: ScrollbarState::default(),
         }
     }
 }
@@ -1125,5 +1134,16 @@ impl App {
         } else if self.cursor_col >= self.viewport_col + visible_cols {
             self.viewport_col = self.cursor_col - visible_cols + 1;
         }
+    }
+
+    /// Update scrollbar state to reflect current viewport position.
+    pub fn update_scrollbar_state(&mut self, visible_rows: usize, visible_cols: usize) {
+        self.v_scrollbar_state = ScrollbarState::new(self.alignment.num_sequences())
+            .position(self.viewport_row)
+            .viewport_content_length(visible_rows);
+
+        self.h_scrollbar_state = ScrollbarState::new(self.alignment.width())
+            .position(self.viewport_col)
+            .viewport_content_length(visible_cols);
     }
 }

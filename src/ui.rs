@@ -3,17 +3,17 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation},
 };
 
 use crate::app::{ActivePane, App, ColorScheme, Mode, SplitMode};
 use crate::color::get_color;
 
 /// Render the application UI.
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -161,7 +161,7 @@ impl IdFormatter {
 /// Render an alignment pane with the given viewport.
 fn render_alignment_pane(
     frame: &mut Frame,
-    app: &App,
+    app: &mut App,
     area: Rect,
     viewport_row: usize,
     viewport_col: usize,
@@ -355,6 +355,33 @@ fn render_alignment_pane(
 
         let ss_line = Paragraph::new(Line::from(spans));
         frame.render_widget(ss_line, ss_cons_area);
+    }
+
+    // Render scrollbars (only in active pane to avoid confusion)
+    if is_active {
+        // Vertical scrollbar (right side of inner area)
+        let v_scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("▲"))
+            .end_symbol(Some("▼"))
+            .track_symbol(Some("│"))
+            .thumb_symbol("█");
+        frame.render_stateful_widget(
+            v_scrollbar,
+            inner.inner(Margin { vertical: 0, horizontal: 0 }),
+            &mut app.v_scrollbar_state,
+        );
+
+        // Horizontal scrollbar (bottom of inner area)
+        let h_scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .begin_symbol(Some("◀"))
+            .end_symbol(Some("▶"))
+            .track_symbol(Some("─"))
+            .thumb_symbol("█");
+        frame.render_stateful_widget(
+            h_scrollbar,
+            inner.inner(Margin { vertical: 0, horizontal: 0 }),
+            &mut app.h_scrollbar_state,
+        );
     }
 }
 

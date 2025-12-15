@@ -105,6 +105,9 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         // Adjust viewport to keep cursor visible
         app.adjust_viewport(visible_rows, visible_cols);
 
+        // Update scrollbar state to reflect current position
+        app.update_scrollbar_state(visible_rows, visible_cols);
+
         // Draw UI
         terminal.draw(|f| ui::render(f, app))?;
 
