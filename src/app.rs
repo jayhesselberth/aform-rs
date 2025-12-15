@@ -844,16 +844,16 @@ impl App {
 
     /// Jump to the current match and update status.
     fn jump_to_current_match(&mut self) {
-        if let Some(idx) = self.search_match_index {
-            if let Some(&(row, start_col, _end_col)) = self.search_matches.get(idx) {
-                self.cursor_row = row;
-                self.cursor_col = start_col;
-                self.set_status(format!(
-                    "Match {}/{} (ignoring gaps)",
-                    idx + 1,
-                    self.search_matches.len()
-                ));
-            }
+        if let Some(idx) = self.search_match_index
+            && let Some(&(row, start_col, _end_col)) = self.search_matches.get(idx)
+        {
+            self.cursor_row = row;
+            self.cursor_col = start_col;
+            self.set_status(format!(
+                "Match {}/{} (ignoring gaps)",
+                idx + 1,
+                self.search_matches.len()
+            ));
         }
     }
 
@@ -1142,10 +1142,10 @@ impl App {
 
     /// Update the structure cache if needed.
     pub fn update_structure_cache(&mut self) {
-        if let Some(ss) = self.alignment.ss_cons() {
-            if !self.structure_cache.is_valid_for(ss) {
-                let _ = self.structure_cache.update(ss);
-            }
+        if let Some(ss) = self.alignment.ss_cons()
+            && !self.structure_cache.is_valid_for(ss)
+        {
+            let _ = self.structure_cache.update(ss);
         }
     }
 

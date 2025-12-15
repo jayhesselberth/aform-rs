@@ -237,19 +237,19 @@ fn render_alignment_pane(
     // === Split horizontally: IDs | Alignment | Tree | Filler ===
     let h_constraints = if tree_display_width > 0 {
         vec![
-            Constraint::Length(id_width as u16),      // IDs column
-            Constraint::Length(1),                    // Separator
-            Constraint::Length(seq_width as u16),     // Alignment column (capped)
-            Constraint::Length(1),                    // Separator
+            Constraint::Length(id_width as u16),       // IDs column
+            Constraint::Length(1),                     // Separator
+            Constraint::Length(seq_width as u16),      // Alignment column (capped)
+            Constraint::Length(1),                     // Separator
             Constraint::Length(app.tree_width as u16), // Tree column
-            Constraint::Min(0),                       // Filler (absorbs extra space)
+            Constraint::Min(0),                        // Filler (absorbs extra space)
         ]
     } else {
         vec![
-            Constraint::Length(id_width as u16),      // IDs column
-            Constraint::Length(1),                    // Separator
-            Constraint::Length(seq_width as u16),     // Alignment column (capped)
-            Constraint::Min(0),                       // Filler (absorbs extra space)
+            Constraint::Length(id_width as u16),  // IDs column
+            Constraint::Length(1),                // Separator
+            Constraint::Length(seq_width as u16), // Alignment column (capped)
+            Constraint::Min(0),                   // Filler (absorbs extra space)
         ]
     };
 
@@ -267,7 +267,16 @@ fn render_alignment_pane(
     };
 
     // === Render IDs column (with vertical alignment to match sequences) ===
-    render_ids_column(frame, app, ids_area, viewport_row, visible_rows, &id_formatter, ruler_height, ss_cons_height);
+    render_ids_column(
+        frame,
+        app,
+        ids_area,
+        viewport_row,
+        visible_rows,
+        &id_formatter,
+        ruler_height,
+        ss_cons_height,
+    );
 
     // === Render separator line ===
     render_separator(frame, h_chunks[1], ruler_height, ss_cons_height);
@@ -290,7 +299,15 @@ fn render_alignment_pane(
     if let Some(tree_rect) = tree_area {
         // Render separator before tree
         render_separator(frame, h_chunks[3], ruler_height, ss_cons_height);
-        render_tree_column(frame, app, tree_rect, viewport_row, visible_rows, ruler_height, ss_cons_height);
+        render_tree_column(
+            frame,
+            app,
+            tree_rect,
+            viewport_row,
+            visible_rows,
+            ruler_height,
+            ss_cons_height,
+        );
     }
 }
 
@@ -362,18 +379,30 @@ fn render_separator(frame: &mut Frame, area: Rect, ruler_height: u16, ss_cons_he
 
     // Blank space for ruler area
     for _ in 0..ruler_height {
-        lines.push(Line::from(Span::styled("│", Style::reset().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "│",
+            Style::reset().fg(Color::DarkGray),
+        )));
     }
 
     // Separator for sequence rows
-    let seq_rows = area.height.saturating_sub(ruler_height).saturating_sub(ss_cons_height);
+    let seq_rows = area
+        .height
+        .saturating_sub(ruler_height)
+        .saturating_sub(ss_cons_height);
     for _ in 0..seq_rows {
-        lines.push(Line::from(Span::styled("│", Style::reset().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "│",
+            Style::reset().fg(Color::DarkGray),
+        )));
     }
 
     // Separator for SS_cons
     for _ in 0..ss_cons_height {
-        lines.push(Line::from(Span::styled("│", Style::reset().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "│",
+            Style::reset().fg(Color::DarkGray),
+        )));
     }
 
     let paragraph = Paragraph::new(lines);
@@ -459,10 +488,10 @@ fn render_alignment_column(
             }
 
             // Highlight paired column
-            if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col) {
-                if col == paired_col {
-                    style = style.bg(Color::Magenta).fg(Color::White);
-                }
+            if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col)
+                && col == paired_col
+            {
+                style = style.bg(Color::Magenta).fg(Color::White);
             }
 
             // Highlight cursor
@@ -491,13 +520,13 @@ fn render_alignment_column(
             let mut style = Style::reset().fg(Color::Yellow).bg(Color::Rgb(30, 30, 40));
 
             // Highlight paired bracket
-            if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col) {
-                if col == paired_col {
-                    style = style
-                        .fg(Color::Black)
-                        .bg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD);
-                }
+            if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col)
+                && col == paired_col
+            {
+                style = style
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD);
             }
 
             // Column indicator
@@ -538,7 +567,8 @@ fn render_tree_column(
     // Render tree lines
     let mut lines = Vec::new();
     if let Some(ref tree_lines) = app.cluster_tree {
-        for display_row in viewport_row..(viewport_row + visible_rows).min(app.visible_sequence_count())
+        for display_row in
+            viewport_row..(viewport_row + visible_rows).min(app.visible_sequence_count())
         {
             if let Some(tree_str) = tree_lines.get(display_row) {
                 let tree_color = match app.terminal_theme {
@@ -952,6 +982,9 @@ fn render_help(frame: &mut Frame) {
         Line::from("  :color X    Set color (ss/base/cons/off)"),
         Line::from("  :ruler      Toggle position ruler"),
         Line::from("  :rownum     Toggle row numbers"),
+        Line::from("  :cluster    Cluster sequences by similarity"),
+        Line::from("  :uncluster  Restore original order"),
+        Line::from("  :tree       Toggle dendrogram tree"),
         Line::from("  :help       Show this help"),
         Line::from(""),
         Line::from(Span::styled(

@@ -67,10 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Load file if provided
-    if let Some(path) = args.file {
-        if let Err(e) = app.load_file(&path) {
-            app.set_status(format!("Error: {}", e));
-        }
+    if let Some(path) = args.file
+        && let Err(e) = app.load_file(&path)
+    {
+        app.set_status(format!("Error: {}", e));
     }
 
     // Run main loop
@@ -121,10 +121,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         terminal.draw(|f| ui::render(f, app))?;
 
         // Handle events
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                input::handle_key(app, key, visible_rows);
-            }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            input::handle_key(app, key, visible_rows);
         }
 
         if app.should_quit {
