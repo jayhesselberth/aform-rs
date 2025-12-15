@@ -90,6 +90,16 @@ pub enum ActivePane {
     Secondary,
 }
 
+/// Terminal color theme (detected at startup).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TerminalTheme {
+    /// Light background - use dark colors for contrast.
+    Light,
+    /// Dark background - use light colors for contrast.
+    #[default]
+    Dark,
+}
+
 /// Application state.
 pub struct App {
     // === Public - Core data ===
@@ -178,6 +188,14 @@ pub struct App {
     /// Cluster-based display ordering (indices into alignment.sequences).
     /// When active, sequences are displayed in dendrogram order (similar sequences adjacent).
     pub(crate) cluster_order: Option<Vec<usize>>,
+    /// Pre-computed ASCII tree characters for each display row.
+    pub(crate) cluster_tree: Option<Vec<String>>,
+    /// Width of the tree column in characters.
+    pub(crate) tree_width: usize,
+    /// Whether to show the dendrogram tree visualization.
+    pub(crate) show_tree: bool,
+    /// Terminal color theme (detected at startup).
+    pub terminal_theme: TerminalTheme,
 }
 
 impl Default for App {
@@ -218,6 +236,10 @@ impl Default for App {
             selection_anchor: None,
             clipboard: None,
             cluster_order: None,
+            cluster_tree: None,
+            tree_width: 0,
+            show_tree: false,
+            terminal_theme: TerminalTheme::Dark,
         }
     }
 }
@@ -992,6 +1014,14 @@ impl App {
                 self.uncluster();
                 self.set_status("Clustering disabled");
             }
+            ["tree"] => {
+                self.toggle_tree();
+                if self.show_tree {
+                    self.set_status("Tree visible");
+                } else if self.cluster_tree.is_some() {
+                    self.set_status("Tree hidden");
+                }
+            }
             _ => {
                 // Check if command is a line number (e.g., :1, :42)
                 if let Ok(line_num) = command.parse::<usize>() {
@@ -1175,8 +1205,11 @@ impl App {
             .map(|s| s.chars().to_vec())
             .collect();
 
-        // Compute cluster order using UPGMA
-        self.cluster_order = Some(crate::clustering::cluster_sequences(&seq_chars, &self.gap_chars));
+        // Compute cluster order and tree using UPGMA
+        let result = crate::clustering::cluster_sequences_with_tree(&seq_chars, &self.gap_chars);
+        self.cluster_order = Some(result.order);
+        self.cluster_tree = Some(result.tree_lines);
+        self.tree_width = result.tree_width;
 
         // Clamp cursor to valid range
         if self.cursor_row >= self.visible_sequence_count() {
@@ -1187,6 +1220,18 @@ impl App {
     /// Disable clustering and restore original order.
     pub fn uncluster(&mut self) {
         self.cluster_order = None;
+        self.cluster_tree = None;
+        self.tree_width = 0;
+        self.show_tree = false;
+    }
+
+    /// Toggle dendrogram tree visibility.
+    pub fn toggle_tree(&mut self) {
+        if self.cluster_tree.is_some() {
+            self.show_tree = !self.show_tree;
+        } else {
+            self.status_message = Some("No tree available. Run :cluster first.".to_string());
+        }
     }
 
     /// Check if clustering is currently active.

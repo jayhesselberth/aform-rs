@@ -28,7 +28,7 @@ use ratatui::{
     },
 };
 
-use app::App;
+use app::{App, TerminalTheme};
 
 /// Terminal Stockholm alignment editor.
 #[derive(Parser, Debug)]
@@ -47,6 +47,9 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // Detect terminal theme before entering raw mode
+    let terminal_theme = detect_terminal_theme();
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -56,6 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create app
     let mut app = App::new();
+    app.terminal_theme = terminal_theme;
 
     // Set color scheme
     if let Some(scheme) = app::ColorScheme::from_str(&args.color) {
@@ -93,6 +97,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         // Calculate visible dimensions for viewport adjustment
         let size = terminal.size()?;
         let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+        let tree_display_width = if app.show_tree && app.cluster_tree.is_some() {
+            app.tree_width + 1
+        } else {
+            0
+        };
         let (visible_rows, visible_cols) = ui::visible_dimensions(
             area,
             app.visible_sequence_count(),
@@ -101,6 +110,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
             app.show_row_numbers,
             app.split_mode,
             app.alignment.ss_cons().is_some(),
+            tree_display_width,
+            app.alignment.width(),
         );
 
         // Adjust viewport to keep cursor visible
@@ -119,5 +130,17 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         if app.should_quit {
             return Ok(());
         }
+    }
+}
+
+/// Detect terminal background theme using termbg.
+fn detect_terminal_theme() -> TerminalTheme {
+    // termbg needs a timeout for terminals that don't respond
+    let timeout = std::time::Duration::from_millis(100);
+
+    match termbg::theme(timeout) {
+        Ok(termbg::Theme::Light) => TerminalTheme::Light,
+        Ok(termbg::Theme::Dark) => TerminalTheme::Dark,
+        Err(_) => TerminalTheme::Dark, // Default to dark on detection failure
     }
 }
