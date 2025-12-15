@@ -248,6 +248,53 @@ impl App {
         }
     }
 
+    /// Delete all sequences in the current visual selection.
+    pub fn delete_selected_sequences(&mut self) {
+        let Some((min_row, _, max_row, _)) = self.get_selection_bounds() else {
+            return;
+        };
+
+        if self.alignment.sequences.is_empty() {
+            return;
+        }
+
+        self.save_undo_state();
+
+        // Collect actual row indices for all selected display rows
+        let mut actual_rows: Vec<usize> = (min_row..=max_row)
+            .map(|display_row| self.display_to_actual_row(display_row))
+            .collect();
+
+        // Sort in reverse order to delete from end first (preserves earlier indices)
+        actual_rows.sort_unstable();
+        actual_rows.dedup();
+        actual_rows.reverse();
+
+        let count = actual_rows.len();
+
+        // Delete each sequence
+        for actual_row in actual_rows {
+            if actual_row < self.alignment.sequences.len() {
+                let seq_id = self.alignment.sequences[actual_row].id.clone();
+                self.alignment.sequences.remove(actual_row);
+                self.alignment.sequence_annotations.remove(&seq_id);
+                self.alignment.residue_annotations.remove(&seq_id);
+            }
+        }
+
+        self.mark_modified();
+        self.exit_visual_mode();
+        self.clamp_cursor();
+
+        // Recompute clustering if active
+        if self.cluster_order.is_some() {
+            self.precompute_collapse_groups();
+            self.cluster_sequences();
+        }
+
+        self.set_status(format!("Deleted {count} sequence(s)"));
+    }
+
     /// Convert alignment to uppercase.
     pub fn uppercase_alignment(&mut self) {
         self.save_undo_state();

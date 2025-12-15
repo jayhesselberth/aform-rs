@@ -429,13 +429,24 @@ fn render_ids_column(
     let ids_annotation_area = v_chunks[2];
 
     // Render sequence IDs (with collapse count if enabled)
+    // Get selection bounds for row highlighting in visual mode
+    let selection_bounds = app.get_selection_bounds();
+
     let mut lines = Vec::new();
     for display_row in viewport_row..(viewport_row + visible_rows).min(app.visible_sequence_count())
     {
         let actual_row = app.display_to_actual_row(display_row);
         let seq = &app.alignment.sequences[actual_row];
 
-        let id_style = if display_row == app.cursor_row {
+        // Check if this row is in the visual selection
+        let is_row_selected = selection_bounds
+            .map(|(min_row, _, max_row, _)| display_row >= min_row && display_row <= max_row)
+            .unwrap_or(false);
+
+        let id_style = if is_row_selected {
+            // Selection highlighting takes priority (includes cursor row in visual mode)
+            Style::reset().bg(Color::Rgb(80, 80, 140)).fg(Color::White)
+        } else if display_row == app.cursor_row {
             Style::reset().add_modifier(Modifier::BOLD)
         } else {
             Style::reset().fg(Color::Cyan)

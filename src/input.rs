@@ -527,6 +527,28 @@ fn handle_visual_mode(app: &mut App, key: KeyEvent, page_size: usize) {
         return;
     }
 
+    // Capture pending status for two-key sequences
+    let pending_status = app.status_message.clone();
+
+    // Handle two-key sequences first
+    if let Some(status) = pending_status.as_deref() {
+        match (status, key.code) {
+            ("g...", KeyCode::Char('g')) => {
+                app.cursor_first_sequence();
+                return;
+            }
+            ("d...", KeyCode::Char('d')) => {
+                // dd in visual mode = delete entire sequences
+                app.delete_selected_sequences();
+                return;
+            }
+            _ => {
+                // Clear pending status on unrecognized sequence
+                app.clear_status();
+            }
+        }
+    }
+
     // Try shared movement keys first (except 'g' which needs two-key handling)
     if !matches!(
         (key.modifiers, key.code),
@@ -552,8 +574,11 @@ fn handle_visual_mode(app: &mut App, key: KeyEvent, page_size: usize) {
             app.yank_selection();
         }
 
-        // Delete selection
-        (KeyModifiers::NONE, KeyCode::Char('d' | 'x')) => {
+        // Delete: first 'd' starts sequence, 'x' deletes cells immediately
+        (KeyModifiers::NONE, KeyCode::Char('d')) => {
+            app.set_status("d...");
+        }
+        (KeyModifiers::NONE, KeyCode::Char('x')) => {
             app.delete_selection();
         }
 
