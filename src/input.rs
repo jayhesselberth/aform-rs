@@ -412,9 +412,18 @@ fn handle_tab_completion(app: &mut App) {
         });
         // Show available options in status
         if let Some(ref state) = app.completion {
-            let preview: Vec<&str> = state.candidates.iter().take(5).map(|s| s.as_str()).collect();
+            let preview: Vec<&str> = state
+                .candidates
+                .iter()
+                .take(5)
+                .map(|s| s.as_str())
+                .collect();
             let msg = if state.candidates.len() > 5 {
-                format!("{} ... ({} more)", preview.join("  "), state.candidates.len() - 5)
+                format!(
+                    "{} ... ({} more)",
+                    preview.join("  "),
+                    state.candidates.len() - 5
+                )
             } else {
                 preview.join("  ")
             };
@@ -436,7 +445,10 @@ fn complete_path(partial: &str) -> Vec<String> {
         (path, "")
     } else {
         // parent() returns Some("") for bare filenames, which is not a valid dir
-        let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         let file_prefix = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         (parent, file_prefix)
     };
