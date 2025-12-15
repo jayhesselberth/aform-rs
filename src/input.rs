@@ -330,6 +330,12 @@ fn handle_search_mode(app: &mut App, key: KeyEvent) {
                 app.enter_normal_mode();
             }
         }
+        KeyCode::Up => {
+            app.search_history_prev();
+        }
+        KeyCode::Down => {
+            app.search_history_next();
+        }
         KeyCode::Char(c) => {
             app.search_pattern.push(c);
         }

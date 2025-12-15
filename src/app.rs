@@ -155,6 +155,12 @@ pub struct App {
     pub(crate) command_history_index: Option<usize>,
     /// Saved command buffer when browsing history.
     pub(crate) command_history_saved: String,
+    /// Search history.
+    pub(crate) search_history: Vec<String>,
+    /// Current position in search history (None = new search).
+    pub(crate) search_history_index: Option<usize>,
+    /// Saved search pattern when browsing history.
+    pub(crate) search_history_saved: String,
     /// Status message.
     pub(crate) status_message: Option<String>,
     /// Undo/redo history.
@@ -233,6 +239,9 @@ impl Default for App {
             command_history: Vec::new(),
             command_history_index: None,
             command_history_saved: String::new(),
+            search_history: Vec::new(),
+            search_history_index: None,
+            search_history_saved: String::new(),
             status_message: None,
             gap_char: '.',
             gap_chars: vec!['.', '-', '_', '~', ':'],
@@ -723,6 +732,12 @@ impl App {
             return;
         }
 
+        // Add to history (avoid consecutive duplicates)
+        if self.search_history.last() != Some(&self.search_pattern) {
+            self.search_history.push(self.search_pattern.clone());
+        }
+        self.search_history_index = None;
+
         self.search_matches = self.find_matches(&self.search_pattern.clone());
 
         if self.search_matches.is_empty() {
@@ -1205,6 +1220,50 @@ impl App {
             Some(i) => {
                 self.command_history_index = Some(i + 1);
                 self.command_buffer = self.command_history[i + 1].clone();
+            }
+        }
+    }
+
+    /// Navigate to previous search in history (Up arrow).
+    pub fn search_history_prev(&mut self) {
+        if self.search_history.is_empty() {
+            return;
+        }
+
+        match self.search_history_index {
+            None => {
+                // Save current input and go to most recent history
+                self.search_history_saved = self.search_pattern.clone();
+                self.search_history_index = Some(self.search_history.len() - 1);
+            }
+            Some(0) => {
+                // Already at oldest, stay there
+                return;
+            }
+            Some(i) => {
+                self.search_history_index = Some(i - 1);
+            }
+        }
+
+        if let Some(i) = self.search_history_index {
+            self.search_pattern = self.search_history[i].clone();
+        }
+    }
+
+    /// Navigate to next search in history (Down arrow).
+    pub fn search_history_next(&mut self) {
+        match self.search_history_index {
+            None => {
+                // Not in history, do nothing
+            }
+            Some(i) if i >= self.search_history.len() - 1 => {
+                // At end of history, restore saved input
+                self.search_history_index = None;
+                self.search_pattern = self.search_history_saved.clone();
+            }
+            Some(i) => {
+                self.search_history_index = Some(i + 1);
+                self.search_pattern = self.search_history[i + 1].clone();
             }
         }
     }
