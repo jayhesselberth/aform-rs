@@ -2,11 +2,19 @@
 //!
 //! This module defines all UI element colors that can be customized via config.
 
+use std::fmt;
+
 use ratatui::style::Color;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// RGB color representation for config serialization.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+///
+/// Supports multiple input formats:
+/// - Hex: `"#FF8000"` or `"#ff8000"`
+/// - RGB string: `"255,128,0"`
+/// - Verbose: `{ r = 255, g = 128, b = 0 }`
+#[derive(Debug, Clone, Copy)]
 pub struct Rgb {
     pub r: u8,
     pub g: u8,
@@ -21,11 +29,118 @@ impl Rgb {
     pub const fn to_color(self) -> Color {
         Color::Rgb(self.r, self.g, self.b)
     }
+
+    /// Parse from hex string like "#FF8000" or "FF8000"
+    fn from_hex(s: &str) -> Option<Self> {
+        let s = s.strip_prefix('#').unwrap_or(s);
+        if s.len() != 6 {
+            return None;
+        }
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some(Self { r, g, b })
+    }
+
+    /// Parse from comma-separated string like "255,128,0"
+    fn from_csv(s: &str) -> Option<Self> {
+        let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        let r = parts[0].parse().ok()?;
+        let g = parts[1].parse().ok()?;
+        let b = parts[2].parse().ok()?;
+        Some(Self { r, g, b })
+    }
 }
 
 impl From<Rgb> for Color {
     fn from(rgb: Rgb) -> Self {
         rgb.to_color()
+    }
+}
+
+impl Serialize for Rgb {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Output as hex format "#RRGGBB"
+        serializer.serialize_str(&format!("#{:02X}{:02X}{:02X}", self.r, self.g, self.b))
+    }
+}
+
+impl<'de> Deserialize<'de> for Rgb {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RgbVisitor;
+
+        impl<'de> Visitor<'de> for RgbVisitor {
+            type Value = Rgb;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a color as hex \"#RRGGBB\", CSV \"r,g,b\", or map { r, g, b }")
+            }
+
+            // Handle string formats: "#RRGGBB" or "r,g,b"
+            fn visit_str<E>(self, value: &str) -> Result<Rgb, E>
+            where
+                E: de::Error,
+            {
+                if value.starts_with('#') || value.chars().all(|c| c.is_ascii_hexdigit()) {
+                    Rgb::from_hex(value).ok_or_else(|| {
+                        de::Error::invalid_value(
+                            de::Unexpected::Str(value),
+                            &"hex color like #FF8000",
+                        )
+                    })
+                } else if value.contains(',') {
+                    Rgb::from_csv(value).ok_or_else(|| {
+                        de::Error::invalid_value(
+                            de::Unexpected::Str(value),
+                            &"RGB values like 255,128,0",
+                        )
+                    })
+                } else {
+                    Err(de::Error::invalid_value(
+                        de::Unexpected::Str(value),
+                        &"hex (#FF8000) or CSV (255,128,0) color format",
+                    ))
+                }
+            }
+
+            // Handle map format: { r = X, g = Y, b = Z }
+            fn visit_map<M>(self, mut map: M) -> Result<Rgb, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut r = None;
+                let mut g = None;
+                let mut b = None;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    match key {
+                        "r" => r = Some(map.next_value()?),
+                        "g" => g = Some(map.next_value()?),
+                        "b" => b = Some(map.next_value()?),
+                        _ => {
+                            let _: de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                Ok(Rgb {
+                    r: r.ok_or_else(|| de::Error::missing_field("r"))?,
+                    g: g.ok_or_else(|| de::Error::missing_field("g"))?,
+                    b: b.ok_or_else(|| de::Error::missing_field("b"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(RgbVisitor)
     }
 }
 

@@ -5,168 +5,151 @@ aform-rs can be customized via a TOML configuration file. The application looks 
 1. `./aform.toml` (current directory)
 2. `~/.config/aform/aform.toml` (XDG config directory)
 
+## Color Formats
+
+Colors can be specified in three formats (you can mix them freely):
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| RGB | `"255,128,0"` | Comma-separated RGB values |
+| Hex | `"#FF8000"` | Standard hex color (case-insensitive) |
+| Verbose | `{ r = 255, g = 128, b = 0 }` | Explicit field notation |
+
 ## Partial Configuration
 
-You only need to specify the settings you want to change. Any omitted settings will use the default values. For example, to change just the border colors:
+You only need to specify the settings you want to change. Any omitted settings will use the default values:
 
 ```toml
 [theme.border]
-active = { r = 255, g = 165, b = 0 }  # Orange
+active = "255,165,0"  # Just change the active border to orange
 ```
 
 ## Default Configuration
 
-Below is the complete default configuration with all available settings:
+Below is the complete default configuration:
 
 ```toml
 # aform.toml - aform-rs configuration file
 
-# =============================================================================
-# Theme Configuration
-# =============================================================================
-# All colors are specified as RGB values: { r = 0-255, g = 0-255, b = 0-255 }
-
-# -----------------------------------------------------------------------------
 # Border Colors
-# -----------------------------------------------------------------------------
 [theme.border]
-active = { r = 0, g = 255, b = 255 }      # Cyan - active pane border
-inactive = { r = 128, g = 128, b = 128 }  # Gray - inactive pane border
+active = "0,255,255"      # Cyan
+inactive = "128,128,128"  # Gray
 
-# -----------------------------------------------------------------------------
 # Ruler Colors
-# -----------------------------------------------------------------------------
 [theme.ruler]
-numbers = { r = 128, g = 128, b = 128 }   # Gray - position numbers
-ticks = { r = 128, g = 128, b = 128 }     # Gray - tick marks
-pair_line = { r = 255, g = 0, b = 255 }   # Magenta - base pair connection line
+numbers = "128,128,128"   # Gray
+ticks = "128,128,128"     # Gray
+pair_line = "255,0,255"   # Magenta - base pair connection
 
-# -----------------------------------------------------------------------------
 # Status Bar Colors
-# -----------------------------------------------------------------------------
 [theme.status_bar]
-background = { r = 128, g = 128, b = 128 }     # Gray
-position = { r = 255, g = 255, b = 255 }       # White - cursor position
-alignment_info = { r = 0, g = 255, b = 255 }   # Cyan - alignment dimensions
-sequence_type = { r = 0, g = 128, b = 0 }      # Green - RNA/DNA/Protein indicator
-color_scheme = { r = 255, g = 0, b = 255 }     # Magenta - color scheme name
-structure_info = { r = 255, g = 255, b = 0 }   # Yellow - base pair info
-selection_info = { r = 173, g = 216, b = 230 } # Light blue - visual selection info
+background = "128,128,128"
+position = "255,255,255"
+alignment_info = "0,255,255"
+sequence_type = "0,128,0"
+color_scheme = "255,0,255"
+structure_info = "255,255,0"
+selection_info = "173,216,230"
 
-# Mode indicator colors (background and foreground for each mode)
-normal_bg = { r = 0, g = 0, b = 255 }          # Blue
-normal_fg = { r = 255, g = 255, b = 255 }      # White
-insert_bg = { r = 0, g = 128, b = 0 }          # Green
-insert_fg = { r = 0, g = 0, b = 0 }            # Black
-command_bg = { r = 255, g = 255, b = 0 }       # Yellow
-command_fg = { r = 0, g = 0, b = 0 }           # Black
-search_bg = { r = 255, g = 0, b = 255 }        # Magenta
-search_fg = { r = 255, g = 255, b = 255 }      # White
-visual_bg = { r = 100, g = 100, b = 180 }      # Purple
-visual_fg = { r = 255, g = 255, b = 255 }      # White
+# Mode indicators
+normal_bg = "0,0,255"
+normal_fg = "255,255,255"
+insert_bg = "0,128,0"
+insert_fg = "0,0,0"
+command_bg = "255,255,0"
+command_fg = "0,0,0"
+search_bg = "255,0,255"
+search_fg = "255,255,255"
+visual_bg = "100,100,180"
+visual_fg = "255,255,255"
 
-# -----------------------------------------------------------------------------
 # ID Column Colors
-# -----------------------------------------------------------------------------
 [theme.id_column]
-text = { r = 0, g = 255, b = 255 }             # Cyan - sequence IDs
-selected_bg = { r = 80, g = 80, b = 140 }      # Purple - visual selection
-selected_fg = { r = 255, g = 255, b = 255 }    # White
+text = "0,255,255"
+selected_bg = "80,80,140"
+selected_fg = "255,255,255"
 
-# -----------------------------------------------------------------------------
 # Annotation Bar Colors
-# -----------------------------------------------------------------------------
 [theme.annotations]
-# SS_cons (secondary structure consensus)
-ss_cons_fg = { r = 255, g = 255, b = 0 }       # Yellow
-ss_cons_bg = { r = 30, g = 30, b = 40 }        # Dark blue-gray
-ss_cons_paired_fg = { r = 0, g = 0, b = 0 }    # Black - paired bracket
-ss_cons_paired_bg = { r = 255, g = 255, b = 0 }# Yellow - paired bracket
+ss_cons_fg = "255,255,0"
+ss_cons_bg = "30,30,40"
+ss_cons_paired_fg = "0,0,0"
+ss_cons_paired_bg = "255,255,0"
+rf_conserved_fg = "0,128,0"
+rf_conserved_bg = "30,40,30"
+rf_variable_fg = "128,128,128"
+rf_variable_bg = "30,30,30"
+pp_cons_bg = "30,30,40"
+consensus_fg = "0,255,255"
+consensus_bg = "30,40,30"
+conservation_bg = "40,30,40"
+label_ss_cons_fg = "255,255,0"
+label_rf_fg = "0,128,0"
+label_pp_cons_fg = "255,255,0"
+label_consensus_fg = "0,255,255"
+label_conservation_fg = "255,0,255"
 
-# RF (reference sequence)
-rf_conserved_fg = { r = 0, g = 128, b = 0 }    # Green - conserved positions
-rf_conserved_bg = { r = 30, g = 40, b = 30 }   # Dark green-gray
-rf_variable_fg = { r = 128, g = 128, b = 128 } # Gray - variable positions
-rf_variable_bg = { r = 30, g = 30, b = 30 }    # Dark gray
-
-# PP_cons (posterior probability consensus)
-pp_cons_bg = { r = 30, g = 30, b = 40 }        # Dark blue-gray
-
-# Consensus sequence
-consensus_fg = { r = 0, g = 255, b = 255 }     # Cyan
-consensus_bg = { r = 30, g = 40, b = 30 }      # Dark green-gray
-
-# Conservation bar
-conservation_bg = { r = 40, g = 30, b = 40 }   # Dark purple-gray
-
-# Annotation labels (left column)
-label_ss_cons_fg = { r = 255, g = 255, b = 0 }     # Yellow
-label_rf_fg = { r = 0, g = 128, b = 0 }            # Green
-label_pp_cons_fg = { r = 255, g = 255, b = 0 }     # Yellow
-label_consensus_fg = { r = 0, g = 255, b = 255 }   # Cyan
-label_conservation_fg = { r = 255, g = 0, b = 255 }# Magenta
-
-# -----------------------------------------------------------------------------
 # Selection and Highlight Colors
-# -----------------------------------------------------------------------------
 [theme.selection]
-visual_bg = { r = 80, g = 80, b = 140 }        # Purple - visual selection
-visual_fg = { r = 255, g = 255, b = 255 }      # White
+visual_bg = "80,80,140"
+visual_fg = "255,255,255"
+search_current_bg = "255,255,0"
+search_current_fg = "0,0,0"
+search_other_bg = "100,100,50"
+search_other_fg = "255,255,255"
+pair_highlight_bg = "255,0,255"
+pair_highlight_fg = "255,255,255"
+gap_column_bg = "80,50,50"
 
-search_current_bg = { r = 255, g = 255, b = 0 }# Yellow - current match
-search_current_fg = { r = 0, g = 0, b = 0 }    # Black
-search_other_bg = { r = 100, g = 100, b = 50 } # Olive - other matches
-search_other_fg = { r = 255, g = 255, b = 255 }# White
-
-pair_highlight_bg = { r = 255, g = 0, b = 255 }# Magenta - paired base
-pair_highlight_fg = { r = 255, g = 255, b = 255 }# White
-
-gap_column_bg = { r = 80, g = 50, b = 50 }     # Dim red - gap columns
-
-# -----------------------------------------------------------------------------
 # Command Line Colors
-# -----------------------------------------------------------------------------
 [theme.command_line]
-command_prefix = { r = 255, g = 255, b = 0 }   # Yellow - ":" prefix
-search_prefix = { r = 255, g = 0, b = 255 }    # Magenta - "/" prefix
-help_hint = { r = 128, g = 128, b = 128 }      # Gray - help text
+command_prefix = "255,255,0"
+search_prefix = "255,0,255"
+help_hint = "128,128,128"
 
-# -----------------------------------------------------------------------------
 # Miscellaneous Colors
-# -----------------------------------------------------------------------------
 [theme.misc]
-separator = { r = 128, g = 128, b = 128 }      # Gray - vertical separators
-tree_dark_theme = { r = 255, g = 255, b = 255 }# White - tree on dark background
-tree_light_theme = { r = 0, g = 0, b = 0 }     # Black - tree on light background
+separator = "128,128,128"
+tree_dark_theme = "255,255,255"
+tree_light_theme = "0,0,0"
 ```
 
 ## Example: High Contrast Theme
 
-Here's an example of a high-contrast configuration for better visibility:
-
 ```toml
 [theme.border]
-active = { r = 0, g = 255, b = 0 }    # Bright green
-inactive = { r = 100, g = 100, b = 100 }
+active = "0,255,0"
+inactive = "100,100,100"
 
 [theme.selection]
-visual_bg = { r = 0, g = 100, b = 200 }
-search_current_bg = { r = 255, g = 200, b = 0 }
-pair_highlight_bg = { r = 255, g = 100, b = 100 }
+visual_bg = "0,100,200"
+search_current_bg = "255,200,0"
+pair_highlight_bg = "255,100,100"
 ```
 
 ## Example: Solarized-Inspired Theme
 
 ```toml
 [theme.border]
-active = { r = 38, g = 139, b = 210 }   # Solarized blue
-inactive = { r = 88, g = 110, b = 117 } # Solarized base01
+active = "38,139,210"    # Solarized blue
+inactive = "88,110,117"  # Solarized base01
 
 [theme.status_bar]
-background = { r = 7, g = 54, b = 66 }  # Solarized base02
-normal_bg = { r = 38, g = 139, b = 210 }
-insert_bg = { r = 133, g = 153, b = 0 }
-command_bg = { r = 181, g = 137, b = 0 }
-search_bg = { r = 211, g = 54, b = 130 }
-visual_bg = { r = 108, g = 113, b = 196 }
+background = "7,54,66"
+normal_bg = "38,139,210"
+insert_bg = "133,153,0"
+command_bg = "181,137,0"
+search_bg = "211,54,130"
+visual_bg = "108,113,196"
+```
+
+## Example: Using Hex Format
+
+You can also use hex colors if preferred:
+
+```toml
+[theme.border]
+active = "#00FFFF"
+inactive = "#808080"
 ```
