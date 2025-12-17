@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::app::{ActivePane, App, ColorScheme, Mode, SplitMode, TerminalTheme};
-use crate::color::get_color;
+use crate::color::{Rgb, get_color};
 
 /// Render the application UI.
 pub fn render(frame: &mut Frame, app: &App) {
@@ -225,9 +225,9 @@ fn render_alignment_pane(
 
     // Use different border color for active vs inactive pane
     let border_style = if is_active {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(app.theme.border.active.to_color())
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(app.theme.border.inactive.to_color())
     };
 
     let block = Block::default()
@@ -445,11 +445,13 @@ fn render_ids_column(
 
         let id_style = if is_row_selected {
             // Selection highlighting takes priority (includes cursor row in visual mode)
-            Style::reset().bg(Color::Rgb(80, 80, 140)).fg(Color::White)
+            Style::reset()
+                .bg(app.theme.id_column.selected_bg.to_color())
+                .fg(app.theme.id_column.selected_fg.to_color())
         } else if display_row == app.cursor_row {
             Style::reset().add_modifier(Modifier::BOLD)
         } else {
-            Style::reset().fg(Color::Cyan)
+            Style::reset().fg(app.theme.id_column.text.to_color())
         };
 
         // Show collapse count if enabled and group has more than 1 member
@@ -476,40 +478,40 @@ fn render_ids_column(
         annotation_lines.push(format_annotation_label(
             "#=GC SS_cons",
             id_formatter,
-            Color::Yellow,
-            Color::Rgb(30, 30, 40),
+            app.theme.annotations.label_ss_cons_fg.to_color(),
+            app.theme.annotations.ss_cons_bg.to_color(),
         ));
     }
     if app.show_rf_bar && app.alignment.rf().is_some() {
         annotation_lines.push(format_annotation_label(
             "#=GC RF",
             id_formatter,
-            Color::Green,
-            Color::Rgb(30, 40, 30),
+            app.theme.annotations.label_rf_fg.to_color(),
+            app.theme.annotations.rf_conserved_bg.to_color(),
         ));
     }
     if app.show_pp_cons && app.alignment.pp_cons().is_some() {
         annotation_lines.push(format_annotation_label(
             "#=GC PP_cons",
             id_formatter,
-            Color::Yellow,
-            Color::Rgb(30, 30, 40),
+            app.theme.annotations.label_pp_cons_fg.to_color(),
+            app.theme.annotations.pp_cons_bg.to_color(),
         ));
     }
     if app.show_consensus {
         annotation_lines.push(format_annotation_label(
             "Consensus",
             id_formatter,
-            Color::Cyan,
-            Color::Rgb(30, 40, 30),
+            app.theme.annotations.label_consensus_fg.to_color(),
+            app.theme.annotations.consensus_bg.to_color(),
         ));
     }
     if app.show_conservation_bar {
         annotation_lines.push(format_annotation_label(
             "Conservation",
             id_formatter,
-            Color::Magenta,
-            Color::Rgb(40, 30, 40),
+            app.theme.annotations.label_conservation_fg.to_color(),
+            app.theme.annotations.conservation_bg.to_color(),
         ));
     }
 
@@ -619,7 +621,26 @@ fn render_alignment_column(
 
     // Render ruler (no ID padding - ruler is only over alignment)
     if app.show_ruler {
-        let ruler_lines = render_ruler(0, seq_width, viewport_col);
+        // Get cursor and paired column for base-pair display (only if this pane is active)
+        let (cursor_col, paired_col) = if is_active {
+            let paired = app.structure_cache.get_pair(app.cursor_col);
+            (Some(app.cursor_col), paired)
+        } else {
+            (None, None)
+        };
+        let ruler_colors = (
+            app.theme.ruler.numbers,
+            app.theme.ruler.ticks,
+            app.theme.ruler.pair_line,
+        );
+        let ruler_lines = render_ruler(
+            0,
+            seq_width,
+            viewport_col,
+            cursor_col,
+            paired_col,
+            ruler_colors,
+        );
         let ruler_paragraph = Paragraph::new(ruler_lines);
         frame.render_widget(ruler_paragraph, ruler_area);
     }
@@ -669,28 +690,38 @@ fn render_alignment_column(
 
             // Highlight empty (all-gap) columns if enabled
             if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-                style = style.bg(Color::Rgb(80, 50, 50)); // Dim red background
+                style = style.bg(app.theme.selection.gap_column_bg.to_color());
             }
 
             // Highlight search matches
             if let Some(is_current) = app.is_search_match(actual_row, col) {
                 if is_current {
-                    style = style.bg(Color::Yellow).fg(Color::Black);
+                    style = style
+                        .bg(app.theme.selection.search_current_bg.to_color())
+                        .fg(app.theme.selection.search_current_fg.to_color());
                 } else {
-                    style = style.bg(Color::Rgb(100, 100, 50)).fg(Color::White);
+                    style = style
+                        .bg(app.theme.selection.search_other_bg.to_color())
+                        .fg(app.theme.selection.search_other_fg.to_color());
                 }
             }
 
             // Highlight visual selection
             if app.is_selected(display_row, col) {
-                style = style.bg(Color::Rgb(80, 80, 140)).fg(Color::White);
+                style = style.bg(app.theme.selection.visual_bg.to_color()).fg(app
+                    .theme
+                    .selection
+                    .visual_fg
+                    .to_color());
             }
 
             // Highlight paired column
             if let Some(paired_col) = app.structure_cache.get_pair(app.cursor_col)
                 && col == paired_col
             {
-                style = style.bg(Color::Magenta).fg(Color::White);
+                style = style
+                    .bg(app.theme.selection.pair_highlight_bg.to_color())
+                    .fg(app.theme.selection.pair_highlight_fg.to_color());
             }
 
             // Highlight cursor
@@ -716,11 +747,13 @@ fn render_alignment_column(
             let ch = ss_chars.get(col).copied().unwrap_or(' ');
             let is_cursor_col = is_active && col == app.cursor_col;
 
-            let mut style = Style::reset().fg(Color::Yellow).bg(Color::Rgb(30, 30, 40));
+            let mut style = Style::reset()
+                .fg(app.theme.annotations.ss_cons_fg.to_color())
+                .bg(app.theme.annotations.ss_cons_bg.to_color());
 
             // Highlight empty (all-gap) columns if enabled
             if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-                style = style.bg(Color::Rgb(80, 50, 50));
+                style = style.bg(app.theme.selection.gap_column_bg.to_color());
             }
 
             // Highlight paired bracket
@@ -728,8 +761,8 @@ fn render_alignment_column(
                 && col == paired_col
             {
                 style = style
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
+                    .fg(app.theme.annotations.ss_cons_paired_fg.to_color())
+                    .bg(app.theme.annotations.ss_cons_paired_bg.to_color())
                     .add_modifier(Modifier::BOLD);
             }
 
@@ -807,11 +840,13 @@ fn render_consensus_bar(
         );
         let is_cursor_col = is_active && col == app.cursor_col;
 
-        let mut style = Style::reset().fg(Color::Cyan).bg(Color::Rgb(30, 40, 30));
+        let mut style = Style::reset()
+            .fg(app.theme.annotations.consensus_fg.to_color())
+            .bg(app.theme.annotations.consensus_bg.to_color());
 
         // Highlight empty (all-gap) columns if enabled
         if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-            style = style.bg(Color::Rgb(80, 50, 50));
+            style = style.bg(app.theme.selection.gap_column_bg.to_color());
         }
 
         if is_cursor_col {
@@ -842,11 +877,14 @@ fn render_conservation_bar(
         let (ch, color) = conservation_to_block(conservation);
         let is_cursor_col = is_active && col == app.cursor_col;
 
-        let mut style = Style::reset().fg(color).bg(Color::Rgb(40, 30, 40));
+        let mut style =
+            Style::reset()
+                .fg(color)
+                .bg(app.theme.annotations.conservation_bg.to_color());
 
         // Highlight empty (all-gap) columns if enabled
         if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-            style = style.bg(Color::Rgb(80, 50, 50));
+            style = style.bg(app.theme.selection.gap_column_bg.to_color());
         }
 
         if is_cursor_col {
@@ -879,16 +917,18 @@ fn render_rf_bar(
 
         // Uppercase or 'x'/'X' = conserved (green), lowercase/gaps = variable (gray)
         let mut style = if ch.is_uppercase() || ch == 'x' || ch == 'X' {
-            Style::reset().fg(Color::Green).bg(Color::Rgb(30, 40, 30))
+            Style::reset()
+                .fg(app.theme.annotations.rf_conserved_fg.to_color())
+                .bg(app.theme.annotations.rf_conserved_bg.to_color())
         } else {
             Style::reset()
-                .fg(Color::DarkGray)
-                .bg(Color::Rgb(30, 30, 30))
+                .fg(app.theme.annotations.rf_variable_fg.to_color())
+                .bg(app.theme.annotations.rf_variable_bg.to_color())
         };
 
         // Highlight empty (all-gap) columns if enabled
         if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-            style = style.bg(Color::Rgb(80, 50, 50));
+            style = style.bg(app.theme.selection.gap_column_bg.to_color());
         }
 
         if is_cursor_col {
@@ -922,11 +962,13 @@ fn render_pp_cons_bar(
         let is_cursor_col = is_active && col == cursor_col;
 
         let color = pp_to_color(ch);
-        let mut style = Style::reset().fg(color).bg(Color::Rgb(30, 30, 40));
+        let mut style = Style::reset()
+            .fg(color)
+            .bg(app.theme.annotations.pp_cons_bg.to_color());
 
         // Highlight empty (all-gap) columns if enabled
         if app.highlight_gap_columns && app.alignment.is_empty_column(col, &app.gap_chars) {
-            style = style.bg(Color::Rgb(80, 50, 50));
+            style = style.bg(app.theme.selection.gap_column_bg.to_color());
         }
 
         if is_cursor_col {
@@ -983,8 +1025,8 @@ fn render_tree_column(
                 // Tree lines are already in display order (clustered), use display_row directly
                 if let Some(tree_str) = tree_lines.get(display_row) {
                     let tree_color = match app.terminal_theme {
-                        TerminalTheme::Dark => Color::White,
-                        TerminalTheme::Light => Color::Black,
+                        TerminalTheme::Dark => app.theme.misc.tree_dark_theme.to_color(),
+                        TerminalTheme::Light => app.theme.misc.tree_light_theme.to_color(),
                     };
                     lines.push(Line::from(Span::styled(
                         tree_str.clone(),
@@ -1002,14 +1044,22 @@ fn render_tree_column(
 }
 
 /// Render the position ruler (returns two lines: numbers and tick marks).
-fn render_ruler(id_width: usize, seq_width: usize, viewport_col: usize) -> Vec<Line<'static>> {
+fn render_ruler(
+    id_width: usize,
+    seq_width: usize,
+    viewport_col: usize,
+    cursor_col: Option<usize>,
+    paired_col: Option<usize>,
+    ruler_colors: (Rgb, Rgb, Rgb), // (numbers, ticks, pair_line)
+) -> Vec<Line<'static>> {
+    let (numbers_color, ticks_color, pair_color) = ruler_colors;
     let mut lines = Vec::new();
 
     // First line: position numbers
     let mut number_spans = Vec::new();
     number_spans.push(Span::styled(
         " ".repeat(id_width),
-        Style::reset().fg(Color::DarkGray),
+        Style::reset().fg(numbers_color.to_color()),
     ));
 
     let mut number_chars = vec![' '; seq_width];
@@ -1029,18 +1079,19 @@ fn render_ruler(id_width: usize, seq_width: usize, viewport_col: usize) -> Vec<L
     }
     number_spans.push(Span::styled(
         number_chars.into_iter().collect::<String>(),
-        Style::reset().fg(Color::DarkGray),
+        Style::reset().fg(numbers_color.to_color()),
     ));
     lines.push(Line::from(number_spans));
 
-    // Second line: tick marks
+    // Second line: tick marks with base-pair overlay
     let mut tick_spans = Vec::new();
     tick_spans.push(Span::styled(
         " ".repeat(id_width),
-        Style::reset().fg(Color::DarkGray),
+        Style::reset().fg(ticks_color.to_color()),
     ));
 
-    let mut tick_chars = String::with_capacity(seq_width);
+    // Build tick characters
+    let mut tick_chars: Vec<char> = Vec::with_capacity(seq_width);
     for col in viewport_col..(viewport_col + seq_width) {
         let pos = col + 1; // 1-based position
         if pos % 10 == 0 {
@@ -1051,7 +1102,66 @@ fn render_ruler(id_width: usize, seq_width: usize, viewport_col: usize) -> Vec<L
             tick_chars.push('·');
         }
     }
-    tick_spans.push(Span::styled(tick_chars, Style::reset().fg(Color::DarkGray)));
+
+    // Track which positions are part of base-pair display
+    let mut is_pair_display: Vec<bool> = vec![false; seq_width];
+
+    // Overlay base-pair connection if both cursor and paired positions exist
+    if let (Some(cursor), Some(paired)) = (cursor_col, paired_col) {
+        let viewport_end = viewport_col + seq_width;
+        let (left, right) = if cursor < paired {
+            (cursor, paired)
+        } else {
+            (paired, cursor)
+        };
+
+        // Check if any part of the pair is visible
+        let left_visible = left >= viewport_col && left < viewport_end;
+        let right_visible = right >= viewport_col && right < viewport_end;
+
+        if left_visible || right_visible {
+            // Determine display range (clipped to viewport)
+            let display_start = left.saturating_sub(viewport_col);
+            let display_end = if right < viewport_end {
+                right - viewport_col
+            } else {
+                seq_width - 1
+            };
+
+            // Draw connecting line
+            for i in display_start..=display_end {
+                tick_chars[i] = '─';
+                is_pair_display[i] = true;
+            }
+
+            // Draw arrows at endpoints (if visible)
+            if left_visible {
+                let idx = left - viewport_col;
+                tick_chars[idx] = '↓';
+            }
+            if right_visible {
+                let idx = right - viewport_col;
+                tick_chars[idx] = '↓';
+            }
+        }
+    }
+
+    // Build spans with different styles for normal ticks vs pair display
+    let tick_style = Style::reset().fg(ticks_color.to_color());
+    let pair_style = Style::reset().fg(pair_color.to_color());
+
+    let mut i = 0;
+    while i < seq_width {
+        let is_pair = is_pair_display[i];
+        let start = i;
+        while i < seq_width && is_pair_display[i] == is_pair {
+            i += 1;
+        }
+        let segment: String = tick_chars[start..i].iter().collect();
+        let style = if is_pair { pair_style } else { tick_style };
+        tick_spans.push(Span::styled(segment, style));
+    }
+
     lines.push(Line::from(tick_spans));
 
     lines
@@ -1059,14 +1169,23 @@ fn render_ruler(id_width: usize, seq_width: usize, viewport_col: usize) -> Vec<L
 
 /// Render the status bar.
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let modes = &app.theme.status_bar.modes;
     let mode_style = match app.mode {
-        Mode::Normal => Style::default().bg(Color::Blue).fg(Color::White),
-        Mode::Insert => Style::default().bg(Color::Green).fg(Color::Black),
-        Mode::Command => Style::default().bg(Color::Yellow).fg(Color::Black),
-        Mode::Search => Style::default().bg(Color::Magenta).fg(Color::White),
+        Mode::Normal => Style::default()
+            .bg(modes.normal_bg.to_color())
+            .fg(modes.normal_fg.to_color()),
+        Mode::Insert => Style::default()
+            .bg(modes.insert_bg.to_color())
+            .fg(modes.insert_fg.to_color()),
+        Mode::Command => Style::default()
+            .bg(modes.command_bg.to_color())
+            .fg(modes.command_fg.to_color()),
+        Mode::Search => Style::default()
+            .bg(modes.search_bg.to_color())
+            .fg(modes.search_fg.to_color()),
         Mode::Visual => Style::default()
-            .bg(Color::Rgb(100, 100, 180))
-            .fg(Color::White),
+            .bg(modes.visual_bg.to_color())
+            .fg(modes.visual_fg.to_color()),
     };
 
     let mode_span = Span::styled(format!(" {} ", app.mode.as_ref()), mode_style);
@@ -1125,16 +1244,35 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 
     let spans = vec![
         mode_span,
-        Span::raw(pos_info),
-        Span::styled(align_info, Style::default().fg(Color::Cyan)),
-        Span::styled(type_info, Style::default().fg(Color::Green)),
-        Span::styled(color_info, Style::default().fg(Color::Magenta)),
-        Span::styled(structure_info, Style::default().fg(Color::Yellow)),
-        Span::styled(selection_info, Style::default().fg(Color::LightBlue)),
+        Span::styled(
+            pos_info,
+            Style::default().fg(app.theme.status_bar.position.to_color()),
+        ),
+        Span::styled(
+            align_info,
+            Style::default().fg(app.theme.status_bar.alignment_info.to_color()),
+        ),
+        Span::styled(
+            type_info,
+            Style::default().fg(app.theme.status_bar.sequence_type.to_color()),
+        ),
+        Span::styled(
+            color_info,
+            Style::default().fg(app.theme.status_bar.color_scheme.to_color()),
+        ),
+        Span::styled(
+            structure_info,
+            Style::default().fg(app.theme.status_bar.structure_info.to_color()),
+        ),
+        Span::styled(
+            selection_info,
+            Style::default().fg(app.theme.status_bar.selection_info.to_color()),
+        ),
         Span::raw(char_info),
     ];
 
-    let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray));
+    let status = Paragraph::new(Line::from(spans))
+        .style(Style::default().bg(app.theme.status_bar.background.to_color()));
 
     frame.render_widget(status, area);
 }
@@ -1143,12 +1281,18 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
     let content = match app.mode {
         Mode::Command => Line::from(vec![
-            Span::styled(":", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                ":",
+                Style::default().fg(app.theme.command_line.command_prefix.to_color()),
+            ),
             Span::raw(&app.command_buffer),
             Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ]),
         Mode::Search => Line::from(vec![
-            Span::styled("/", Style::default().fg(Color::Magenta)),
+            Span::styled(
+                "/",
+                Style::default().fg(app.theme.command_line.search_prefix.to_color()),
+            ),
             Span::raw(&app.search.pattern),
             Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
         ]),
@@ -1159,7 +1303,7 @@ fn render_command_line(frame: &mut Frame, app: &App, area: Rect) {
                 // Show help hint
                 Line::from(Span::styled(
                     "Press : for commands, ? for help, / for search",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(app.theme.command_line.help_hint.to_color()),
                 ))
             }
         }

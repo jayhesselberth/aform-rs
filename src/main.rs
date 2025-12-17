@@ -6,6 +6,7 @@
 mod app;
 mod clustering;
 mod color;
+mod config;
 mod editor;
 mod history;
 mod input;
@@ -117,6 +118,9 @@ COLOR SCHEMES:
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // Load configuration
+    let config = config::Config::load();
+
     // Detect terminal theme before entering raw mode
     let terminal_theme = detect_terminal_theme();
 
@@ -130,6 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create app
     let mut app = App::new();
     app.terminal_theme = terminal_theme;
+    app.theme = config.theme;
 
     // Set color scheme
     if let Some(scheme) = app::ColorScheme::from_str(&args.color) {

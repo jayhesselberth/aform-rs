@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use strum::AsRefStr;
 
+use crate::color::Theme;
 use crate::editor::History;
 use crate::history::InputHistory;
 use crate::stockholm::{Alignment, SequenceType};
@@ -243,6 +244,8 @@ pub struct App {
     pub(crate) cluster_group_order: Option<Vec<usize>>,
     /// Terminal color theme (detected at startup).
     pub terminal_theme: TerminalTheme,
+    /// UI theme colors.
+    pub theme: Theme,
 
     // === Collapse state ===
     /// Whether to collapse identical sequences in display.
@@ -320,6 +323,7 @@ impl Default for App {
             show_tree: false,
             cluster_group_order: None,
             terminal_theme: TerminalTheme::Dark,
+            theme: Theme::default(),
             collapse_identical: false,
             collapse_groups: Vec::new(),
             show_consensus: false,
