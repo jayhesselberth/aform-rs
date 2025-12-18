@@ -2,7 +2,7 @@
 name = "aform-rs"
 version = "0.1.0-alpha.5"
 edition = "2024"
-description = "Terminal Stockholm alignment editor"
+description = "TUI Stockholm multiple sequencing alignment viz/edit"
 license = "MIT"
 repository = "https://github.com/rnabioco/aform-rs"
 keywords = ["bioinformatics", "rna", "alignment", "stockholm", "tui"]
